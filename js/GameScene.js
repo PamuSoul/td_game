@@ -27,6 +27,7 @@ class GameScene extends Phaser.Scene {
         this.createUI();
         this.setupInput();
         this.previewGfx = this.add.graphics().setDepth(900);
+        this.previewImg = null;
     }
 
     seededRandom() {
@@ -56,36 +57,49 @@ class GameScene extends Phaser.Scene {
     }
 
     drawGrid() {
+        const gpx = 4; // 背景像素格大小
         for (let r = 0; r < ROWS; r++) {
             const rowGfx = this.add.graphics().setDepth(r * 10);
             for (let c = 0; c < COLS; c++) {
                 const type = this.grid[c][r];
                 if (type === 'path') {
                     drawBlock(rowGfx, c, r, COLORS.pathTop, COLORS.pathFront);
-                    const cx = c * TILE_W + TILE_W / 2, cy = r * TILE_H + TILE_H / 2;
-                    for (let i = 0; i < 4; i++) {
-                        const ox = (this.seededRandom() - 0.5) * TILE_W * 0.6;
-                        const oy = (this.seededRandom() - 0.5) * TILE_H * 0.5;
-                        rowGfx.fillStyle(0x8a7a60, 0.3);
-                        const s = 1 + this.seededRandom();
-                        rowGfx.fillRect(cx + ox, cy + oy, s, s);
+                    // 像素風沙土紋理
+                    const x0 = c * TILE_W, y0 = r * TILE_H;
+                    const darks = [0xb09878, 0xa08868, 0x9a8060];
+                    for (let py = 0; py < TILE_H; py += gpx) {
+                        for (let px = 0; px < TILE_W; px += gpx) {
+                            if (this.seededRandom() < 0.25) {
+                                rowGfx.fillStyle(darks[Math.floor(this.seededRandom() * darks.length)], 0.4);
+                                rowGfx.fillRect(x0 + px, y0 + py, gpx, gpx);
+                            }
+                        }
                     }
                 } else if (type === 'buildable') {
                     drawBlock(rowGfx, c, r, COLORS.buildTop, COLORS.buildFront);
+                    // 像素風可建造標記
                     const cx = c * TILE_W + TILE_W / 2, cy = r * TILE_H + TILE_H / 2;
-                    rowGfx.lineStyle(1, 0x81c784, 0.2);
-                    rowGfx.lineBetween(cx - 5, cy, cx + 5, cy);
-                    rowGfx.lineBetween(cx, cy - 4, cx, cy + 4);
+                    rowGfx.fillStyle(0x81c784, 0.3);
+                    rowGfx.fillRect(cx - gpx, cy - gpx/2, gpx*2, gpx);
+                    rowGfx.fillRect(cx - gpx/2, cy - gpx, gpx, gpx*2);
                 } else {
                     const ci = (c * 7 + r * 13) % COLORS.grassTop.length;
                     drawBlock(rowGfx, c, r, COLORS.grassTop[ci], COLORS.grassFront[ci]);
-                    const cx = c * TILE_W + TILE_W / 2, cy = r * TILE_H + TILE_H / 2;
+                    // 像素風草地紋理
+                    const x0 = c * TILE_W, y0 = r * TILE_H;
                     const accent = COLORS.grassTop[(ci + 1) % COLORS.grassTop.length];
-                    for (let i = 0; i < 3; i++) {
-                        const ox = (this.seededRandom() - 0.5) * TILE_W * 0.5;
-                        const oy = (this.seededRandom() - 0.5) * TILE_H * 0.4;
-                        rowGfx.fillStyle(accent, 0.25);
-                        rowGfx.fillCircle(cx + ox, cy + oy, 1 + this.seededRandom());
+                    const dark = COLORS.grassFront[ci];
+                    for (let py = 0; py < TILE_H; py += gpx) {
+                        for (let px = 0; px < TILE_W; px += gpx) {
+                            const rnd = this.seededRandom();
+                            if (rnd < 0.12) {
+                                rowGfx.fillStyle(accent, 0.35);
+                                rowGfx.fillRect(x0 + px, y0 + py, gpx, gpx);
+                            } else if (rnd < 0.18) {
+                                rowGfx.fillStyle(dark, 0.2);
+                                rowGfx.fillRect(x0 + px, y0 + py, gpx, gpx);
+                            }
+                        }
                     }
                 }
             }
@@ -167,45 +181,17 @@ class GameScene extends Phaser.Scene {
                 const decoGfx = this.add.graphics().setDepth(depth);
 
                 if (rand < 0.12) {
-                    this.drawTree(decoGfx, cx, cy - 8);
+                    drawPixelSprite(decoGfx, cx, cy - 4, SPR_TREE, PAL_TREE, 3);
                 } else if (rand < 0.20) {
-                    this.drawRock(decoGfx, cx, cy);
+                    drawPixelSprite(decoGfx, cx, cy + 4, SPR_ROCK, PAL_ROCK, 3);
                 } else if (rand < 0.28) {
-                    const ox = (this.seededRandom() - 0.5) * 16;
-                    const oy = (this.seededRandom() - 0.5) * 8;
-                    this.drawFlower(decoGfx, cx + ox, cy + oy);
+                    const ox = (this.seededRandom() - 0.5) * 12;
+                    const oy = (this.seededRandom() - 0.5) * 6;
+                    const fi = Math.floor(this.seededRandom() * FLOWER_PALS.length);
+                    drawPixelSprite(decoGfx, cx + ox, cy + oy, SPR_FLOWER_R, FLOWER_PALS[fi], 3);
                 }
             }
         }
-    }
-
-    drawTree(gfx, x, y) {
-        gfx.fillStyle(0x5d4037);
-        gfx.fillRect(x - 2, y + 2, 4, 12);
-        gfx.fillStyle(0x2e7d32, 0.9);
-        gfx.fillTriangle(x, y - 14, x - 12, y + 4, x + 12, y + 4);
-        gfx.fillStyle(0x388e3c, 0.9);
-        gfx.fillTriangle(x, y - 20, x - 9, y - 2, x + 9, y - 2);
-        gfx.fillStyle(0x43a047, 0.8);
-        gfx.fillTriangle(x, y - 24, x - 6, y - 10, x + 6, y - 10);
-    }
-
-    drawRock(gfx, x, y) {
-        gfx.fillStyle(0x757575, 0.7);
-        gfx.fillEllipse(x, y + 2, 14, 8);
-        gfx.fillStyle(0x9e9e9e, 0.5);
-        gfx.fillEllipse(x - 1, y + 1, 8, 5);
-    }
-
-    drawFlower(gfx, x, y) {
-        const colors = [0xff8a80, 0xffff8d, 0x80d8ff, 0xb388ff];
-        const fc = colors[Math.floor(this.seededRandom() * colors.length)];
-        gfx.lineStyle(1, 0x558b2f, 0.6);
-        gfx.lineBetween(x, y, x, y + 6);
-        gfx.fillStyle(fc, 0.7);
-        gfx.fillCircle(x, y, 2.5);
-        gfx.fillStyle(0xffff00, 0.8);
-        gfx.fillCircle(x, y, 1);
     }
 
     // ── UI ──
@@ -365,6 +351,7 @@ class GameScene extends Phaser.Scene {
 
         this.input.on('pointermove', (pointer) => {
             this.previewGfx.clear();
+            if (this.previewImg) { this.previewImg.setVisible(false); }
             if (!this.selectedTowerType || pointer.y >= PLAYFIELD_H) return;
             const { col, row } = screenToGrid(pointer.x, pointer.y);
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
@@ -381,10 +368,27 @@ class GameScene extends Phaser.Scene {
                 this.previewGfx.fillStyle(color, 0.08);
                 this.previewGfx.fillCircle(center.x, center.y, cfg.range);
 
-                this.previewGfx.fillStyle(cfg.color, canAfford ? 0.5 : 0.25);
-                this.previewGfx.fillRect(col * TILE_W + 4, row * TILE_H + 4, TILE_W - 8, TILE_H - 8);
-                this.previewGfx.lineStyle(1, canAfford ? 0xffffff : 0xff0000, 0.5);
-                this.previewGfx.strokeRect(col * TILE_W + 4, row * TILE_H + 4, TILE_W - 8, TILE_H - 8);
+                // 預覽塔圖像
+                const imgKeys = { arrow: 'tower_arrow', cannon: null, ice: null };
+                const imgKey = imgKeys[this.selectedTowerType];
+                if (imgKey && this.textures.exists(imgKey)) {
+                    if (!this.previewImg || this.previewImg.texture.key !== imgKey) {
+                        if (this.previewImg) this.previewImg.destroy();
+                        this.previewImg = this.add.image(0, 0, imgKey).setDepth(901);
+                    }
+                    const s = (TILE_H * 2) / this.previewImg.height;
+                    this.previewImg.setPosition(center.x, center.y);
+                    this.previewImg.setScale(s);
+                    this.previewImg.setOrigin(0.5, 0.85);
+                    this.previewImg.setAlpha(canAfford ? 0.6 : 0.3);
+                    this.previewImg.setVisible(true);
+                } else {
+                    const sprMap = { arrow: SPR_ARROW_TOWER, cannon: SPR_CANNON_TOWER, ice: SPR_ICE_TOWER };
+                    const palMap = { arrow: PAL_ARROW, cannon: PAL_CANNON, ice: PAL_ICE };
+                    this.previewGfx.setAlpha(canAfford ? 0.6 : 0.3);
+                    drawPixelSprite(this.previewGfx, center.x, center.y, sprMap[this.selectedTowerType], palMap[this.selectedTowerType], PX);
+                    this.previewGfx.setAlpha(1);
+                }
             }
         });
     }
@@ -417,55 +421,33 @@ class GameScene extends Phaser.Scene {
             range: cfg.range, damage: cfg.damage, fireRate: cfg.fireRate,
         };
 
-        const gfx = this.add.graphics().setDepth(towerDepth);
-
-        // 塔身方塊
-        const bx = col * TILE_W + 6, by = row * TILE_H;
-        const bw = TILE_W - 12, bh = TILE_H - 4;
-        gfx.fillStyle(cfg.colorDark);
-        gfx.fillRect(bx, by + bh, bw, 8);
-        gfx.fillStyle(cfg.color);
-        gfx.fillRect(bx, by - 4, bw, bh);
-        gfx.fillStyle(cfg.colorLight);
-        gfx.fillRect(bx + 2, by - 2, bw - 4, bh - 4);
-
-        // 塔頂圖示
-        const tx = screenPos.x, ty = screenPos.y - 6;
-        if (type === 'arrow') {
-            gfx.fillStyle(0x81c784);
-            gfx.fillCircle(tx, ty, 8);
-            gfx.fillStyle(0x66bb6a);
-            gfx.fillCircle(tx, ty, 5);
-            gfx.lineStyle(2, 0xc8e6c9, 0.9);
-            gfx.lineBetween(tx, ty - 8, tx, ty + 6);
-            gfx.lineBetween(tx - 2, ty - 5, tx, ty - 9);
-            gfx.lineBetween(tx + 2, ty - 5, tx, ty - 9);
-        } else if (type === 'cannon') {
-            gfx.fillStyle(0xbdbdbd);
-            gfx.fillRect(tx - 4, ty - 8, 8, 10);
-            gfx.fillStyle(0x9e9e9e);
-            gfx.fillRect(tx - 6, ty, 12, 6);
-            gfx.fillStyle(0x757575);
-            gfx.fillCircle(tx, ty + 4, 5);
-            gfx.lineStyle(1, 0xe0e0e0, 0.5);
-            gfx.strokeCircle(tx, ty + 4, 5);
-        } else if (type === 'ice') {
-            gfx.fillStyle(0x90caf9, 0.8);
-            gfx.fillTriangle(tx, ty - 12, tx - 8, ty + 4, tx + 8, ty + 4);
-            gfx.fillStyle(0x64b5f6, 0.9);
-            gfx.fillTriangle(tx, ty + 8, tx - 6, ty - 2, tx + 6, ty - 2);
-            gfx.lineStyle(1, 0xe3f2fd, 0.6);
-            gfx.lineBetween(tx, ty - 12, tx, ty + 8);
-            gfx.lineBetween(tx - 8, ty - 2, tx + 8, ty - 2);
+        // 塔圖像：有圖片用圖片，否則用像素圖
+        const imgKeys = { arrow: 'tower_arrow', cannon: null, ice: null };
+        let towerObj;
+        let finalScale = 1;
+        if (imgKeys[type] && this.textures.exists(imgKeys[type])) {
+            const img = this.add.image(screenPos.x, screenPos.y, imgKeys[type]).setDepth(towerDepth);
+            // 縮放圖片適配格子大小（高度對齊 TILE_H * 2）
+            finalScale = (TILE_H * 2) / img.height;
+            img.setScale(finalScale);
+            // 圖片往上偏移讓塔立在格子上
+            img.setOrigin(0.5, 0.85);
+            towerObj = img;
+        } else {
+            const gfx = this.add.graphics().setDepth(towerDepth);
+            const sprMap = { arrow: SPR_ARROW_TOWER, cannon: SPR_CANNON_TOWER, ice: SPR_ICE_TOWER };
+            const palMap = { arrow: PAL_ARROW, cannon: PAL_CANNON, ice: PAL_ICE };
+            drawPixelSprite(gfx, screenPos.x, screenPos.y, sprMap[type], palMap[type], PX);
+            towerObj = gfx;
         }
 
-        tower.graphics = gfx;
+        tower.graphics = towerObj;
         this.towers.push(tower);
         this.updateUI();
 
-        gfx.setScale(0.3).setAlpha(0.5);
+        towerObj.setScale(finalScale * 0.3).setAlpha(0.5);
         this.tweens.add({
-            targets: gfx, scaleX: 1, scaleY: 1, alpha: 1,
+            targets: towerObj, scaleX: finalScale, scaleY: finalScale, alpha: 1,
             duration: 250, ease: 'Back.easeOut',
         });
 
@@ -518,58 +500,37 @@ class GameScene extends Phaser.Scene {
         };
 
         const container = this.add.container(start.x, start.y).setDepth(10);
-        const radius = data.isBoss ? 18 : 11;
+        const epx = data.isBoss ? 3 : 3;
+        const spr = data.isBoss ? SPR_BOSS : SPR_ENEMY;
+        const pal = data.isBoss ? PAL_BOSS : PAL_ENEMY;
+        const sprH = spr.length * epx;
 
+        // 陰影
         const shadow = this.add.graphics();
-        shadow.fillStyle(0x000000, 0.25);
-        shadow.fillEllipse(2, radius - 2, radius * 2, radius * 0.8);
+        shadow.fillStyle(0x000000, 0.2);
+        const sw = spr[0].length * epx * 0.7;
+        shadow.fillEllipse(1, sprH / 2 - 2, sw, sw * 0.35);
         container.add(shadow);
 
+        // 像素風本體
         const body = this.add.graphics();
-        if (data.isBoss) {
-            body.fillStyle(COLORS.enemyBossGlow, 0.15);
-            body.fillCircle(0, 0, radius + 5);
-            body.fillStyle(COLORS.enemyBossDark);
-            body.fillCircle(0, 0, radius);
-            body.fillStyle(COLORS.enemyBoss);
-            body.fillCircle(0, -2, radius - 3);
-            body.lineStyle(2, 0xff80ab, 0.8);
-            body.strokeCircle(0, 0, radius);
-            body.fillStyle(0xffffff);
-            body.fillCircle(-4, -3, 2.5);
-            body.fillCircle(4, -3, 2.5);
-            body.fillStyle(0xff0000);
-            body.fillCircle(-4, -3, 1.2);
-            body.fillCircle(4, -3, 1.2);
-        } else {
-            body.fillStyle(COLORS.enemyNormalDark);
-            body.fillCircle(0, 0, radius);
-            body.fillStyle(COLORS.enemyNormal);
-            body.fillCircle(0, -1.5, radius - 2);
-            body.fillStyle(0xef9a9a, 0.4);
-            body.fillCircle(-2, -3, 3);
-            body.fillStyle(0xffffff);
-            body.fillCircle(-3, -2, 2);
-            body.fillCircle(3, -2, 2);
-            body.fillStyle(0x333333);
-            body.fillCircle(-3, -2, 1);
-            body.fillCircle(3, -2, 1);
-        }
+        drawPixelSprite(body, 0, 0, spr, pal, epx);
         container.add(body);
 
+        // 血量條
         const hpBg = this.add.graphics();
         hpBg.fillStyle(0x000000, 0.5);
-        hpBg.fillRoundedRect(-16, -radius - 12, 32, 6, 3);
+        hpBg.fillRoundedRect(-16, -sprH / 2 - 8, 32, 6, 3);
         container.add(hpBg);
 
         const hpBar = this.add.graphics();
         hpBar.fillStyle(0x4caf50);
-        hpBar.fillRoundedRect(-15, -radius - 11, 30, 4, 2);
+        hpBar.fillRoundedRect(-15, -sprH / 2 - 7, 30, 4, 2);
         container.add(hpBar);
 
         enemy.container = container;
         enemy.hpBar = hpBar;
-        enemy.hpBarRadius = radius;
+        enemy.hpBarTop = -sprH / 2 - 7;
 
         container.setScale(0.2).setAlpha(0);
         this.tweens.add({
@@ -619,13 +580,10 @@ class GameScene extends Phaser.Scene {
             enemy.slowTimer = 2000;
             const bodyGfx = enemy.container.list[1];
             bodyGfx.clear();
-            const radius = enemy.isBoss ? 18 : 11;
-            bodyGfx.fillStyle(0x4fc3f7, 0.3);
-            bodyGfx.fillCircle(0, 0, radius + 4);
-            bodyGfx.fillStyle(0x81d4fa);
-            bodyGfx.fillCircle(0, 0, radius);
-            bodyGfx.lineStyle(1, 0xe1f5fe, 0.6);
-            bodyGfx.strokeCircle(0, 0, radius);
+            // 冰凍像素效果
+            const icePal = { a: 0x1565c0, b: 0x42a5f5, c: 0x90caf9, d: 0xbbdefb, e: 0xe3f2fd, f: 0xe3f2fd, W: 0xffffff, K: 0x546e7a, R: 0x90caf9, G: 0x90caf9 };
+            const spr = enemy.isBoss ? SPR_BOSS : SPR_ENEMY;
+            drawPixelSprite(bodyGfx, 0, 0, spr, icePal, 3);
             this.time.delayedCall(400, () => {
                 if (enemy.alive) this.redrawEnemyBody(enemy);
             });
@@ -638,7 +596,7 @@ class GameScene extends Phaser.Scene {
         const ratio = Math.max(0, enemy.hp / enemy.maxHp);
         const color = ratio > 0.6 ? 0x4caf50 : ratio > 0.3 ? 0xffa726 : 0xef5350;
         enemy.hpBar.fillStyle(color);
-        enemy.hpBar.fillRoundedRect(-15, -enemy.hpBarRadius - 11, 30 * ratio, 4, 2);
+        enemy.hpBar.fillRoundedRect(-15, enemy.hpBarTop, 30 * ratio, 4, 2);
 
         if (enemy.hp <= 0) this.killEnemy(enemy);
     }
@@ -646,36 +604,9 @@ class GameScene extends Phaser.Scene {
     redrawEnemyBody(enemy) {
         const bodyGfx = enemy.container.list[1];
         bodyGfx.clear();
-        const radius = enemy.isBoss ? 18 : 11;
-        if (enemy.isBoss) {
-            bodyGfx.fillStyle(COLORS.enemyBossGlow, 0.15);
-            bodyGfx.fillCircle(0, 0, radius + 5);
-            bodyGfx.fillStyle(COLORS.enemyBossDark);
-            bodyGfx.fillCircle(0, 0, radius);
-            bodyGfx.fillStyle(COLORS.enemyBoss);
-            bodyGfx.fillCircle(0, -2, radius - 3);
-            bodyGfx.lineStyle(2, 0xff80ab, 0.8);
-            bodyGfx.strokeCircle(0, 0, radius);
-            bodyGfx.fillStyle(0xffffff);
-            bodyGfx.fillCircle(-4, -3, 2.5);
-            bodyGfx.fillCircle(4, -3, 2.5);
-            bodyGfx.fillStyle(0xff0000);
-            bodyGfx.fillCircle(-4, -3, 1.2);
-            bodyGfx.fillCircle(4, -3, 1.2);
-        } else {
-            bodyGfx.fillStyle(COLORS.enemyNormalDark);
-            bodyGfx.fillCircle(0, 0, radius);
-            bodyGfx.fillStyle(COLORS.enemyNormal);
-            bodyGfx.fillCircle(0, -1.5, radius - 2);
-            bodyGfx.fillStyle(0xef9a9a, 0.4);
-            bodyGfx.fillCircle(-2, -3, 3);
-            bodyGfx.fillStyle(0xffffff);
-            bodyGfx.fillCircle(-3, -2, 2);
-            bodyGfx.fillCircle(3, -2, 2);
-            bodyGfx.fillStyle(0x333333);
-            bodyGfx.fillCircle(-3, -2, 1);
-            bodyGfx.fillCircle(3, -2, 1);
-        }
+        const spr = enemy.isBoss ? SPR_BOSS : SPR_ENEMY;
+        const pal = enemy.isBoss ? PAL_BOSS : PAL_ENEMY;
+        drawPixelSprite(bodyGfx, 0, 0, spr, pal, 3);
     }
 
     killEnemy(enemy) {

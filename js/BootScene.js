@@ -7,6 +7,10 @@ class BootScene extends Phaser.Scene {
         super('BootScene');
     }
 
+    preload() {
+        this.load.image('tower_arrow', 'assets/Arrow_Tower.png');
+    }
+
     create() {
         const cx = GAME_WIDTH / 2;
         const cy = GAME_HEIGHT / 2;
