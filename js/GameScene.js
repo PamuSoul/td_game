@@ -222,12 +222,15 @@ class GameScene extends Phaser.Scene {
 
         this.goldText = this.add.text(this.goldIconX, this.goldIconY, '', {
             fontSize: '17px', color: COLORS.uiGold, fontStyle: 'bold',
+            padding: { top: 4, bottom: 2 },
         }).setDepth(201);
         this.livesText = this.add.text(24, uiY + 34, '', {
             fontSize: '17px', color: COLORS.uiLives, fontStyle: 'bold',
+            padding: { top: 4, bottom: 2 },
         }).setDepth(201);
         this.waveText = this.add.text(24, uiY + 55, '', {
             fontSize: '13px', color: COLORS.uiWave,
+            padding: { top: 2 },
         }).setDepth(201);
 
         this.towerButtons = [];
@@ -240,9 +243,11 @@ class GameScene extends Phaser.Scene {
             const btnBg = this.add.graphics().setDepth(200);
             const btn = this.add.text(bx + 60, uiY + 26, `${icons[i]} ${cfg.name}`, {
                 fontSize: '16px', color: '#e0e0e0', fontStyle: 'bold',
+                padding: { top: 4, bottom: 2 },
             }).setOrigin(0.5).setDepth(201);
             const costText = this.add.text(bx + 60, uiY + 50, `$ ${cfg.cost}`, {
                 fontSize: '13px', color: '#aaaaaa',
+                padding: { top: 2 },
             }).setOrigin(0.5).setDepth(201);
 
             const hitArea = this.add.rectangle(bx + 60, uiY + 40, 120, 68)
@@ -260,6 +265,7 @@ class GameScene extends Phaser.Scene {
         this.drawNextWaveBtn(0xc62828, 0xe53935);
         this.nextWaveText = this.add.text(GAME_WIDTH - 95, uiY + 40, '下 一 波', {
             fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
+            padding: { top: 4, bottom: 2 },
         }).setOrigin(0.5).setDepth(201);
 
         const nextWaveHit = this.add.rectangle(GAME_WIDTH - 95, uiY + 40, 140, 60)

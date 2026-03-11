@@ -67,9 +67,11 @@ class GameOverScene extends Phaser.Scene {
 
         this.add.text(cx + 2, cy - 52, titleText, {
             fontSize: '48px', fontStyle: 'bold', color: '#000000',
+            padding: { top: 6, bottom: 2 },
         }).setOrigin(0.5).setAlpha(0.4);
         this.add.text(cx, cy - 54, titleText, {
             fontSize: '48px', fontStyle: 'bold', color: titleColor,
+            padding: { top: 6, bottom: 2 },
         }).setOrigin(0.5);
 
         // 分隔線
@@ -80,10 +82,12 @@ class GameOverScene extends Phaser.Scene {
         // 統計資訊
         this.add.text(cx, cy + 10, `最終波數`, {
             fontSize: '16px', color: '#888888',
+            padding: { top: 4, bottom: 2 },
         }).setOrigin(0.5);
 
         this.add.text(cx, cy + 42, `${this.finalWave} / ${MAX_WAVES}`, {
             fontSize: '32px', color: '#ffffff', fontStyle: 'bold',
+            padding: { top: 4, bottom: 2 },
         }).setOrigin(0.5);
 
         // 進度條
@@ -114,6 +118,7 @@ class GameOverScene extends Phaser.Scene {
 
         const btnText = this.add.text(cx, btnY + 20, '再 玩 一 次', {
             fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
+            padding: { top: 4, bottom: 2 },
         }).setOrigin(0.5);
 
         // 按鈕互動

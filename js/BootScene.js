@@ -59,10 +59,11 @@ class BootScene extends Phaser.Scene {
         // 遊戲標題（帶陰影）
         this.add.text(cx + 2, cy - 82, '守 塔 遊 戲', {
             fontSize: '52px', fontFamily: 'Arial, sans-serif', color: '#000000',
+            padding: { top: 6, bottom: 2 },
         }).setOrigin(0.5).setAlpha(0.4);
         const title = this.add.text(cx, cy - 84, '守 塔 遊 戲', {
             fontSize: '52px', fontFamily: 'Arial, sans-serif', color: '#f0e6d0',
-            fontStyle: 'bold',
+            fontStyle: 'bold', padding: { top: 6, bottom: 2 },
         }).setOrigin(0.5);
 
         // 標題緩慢浮動動畫
@@ -87,7 +88,7 @@ class BootScene extends Phaser.Scene {
         // 遊戲說明
         this.add.text(cx, cy + 30, '敵人會沿著路徑前進\n在路徑旁建造防禦塔來消滅他們！', {
             fontSize: '18px', fontFamily: 'Arial', color: '#b0b0cc',
-            align: 'center', lineSpacing: 8,
+            align: 'center', lineSpacing: 8, padding: { top: 4, bottom: 2 },
         }).setOrigin(0.5);
 
         // 塔的介紹卡片
@@ -107,9 +108,11 @@ class BootScene extends Phaser.Scene {
 
             this.add.text(cardX, cardY - 2, `${card.icon} ${card.name}`, {
                 fontSize: '16px', color: card.color, fontStyle: 'bold',
+                padding: { top: 4, bottom: 2 },
             }).setOrigin(0.5);
             this.add.text(cardX, cardY + 18, card.desc, {
                 fontSize: '12px', color: '#999999',
+                padding: { top: 2 },
             }).setOrigin(0.5);
         });
 
@@ -126,6 +129,7 @@ class BootScene extends Phaser.Scene {
 
         const btnText = this.add.text(cx, cy + 192, '開 始 遊 戲', {
             fontSize: '24px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+            padding: { top: 4, bottom: 2 },
         }).setOrigin(0.5);
 
         // 按鈕互動區域
