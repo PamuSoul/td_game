@@ -20,6 +20,33 @@ class GameScene extends Phaser.Scene {
         this.decoSeed = 12345;
 
         this.buildGrid();
+        // 從草地圖片裁切出非透明區域，建立新紋理
+        if (this.textures.exists('tile_grass') && !this.textures.exists('tile_grass_trimmed')) {
+            const src = this.textures.get('tile_grass').getSourceImage();
+            const cv = document.createElement('canvas');
+            cv.width = src.width; cv.height = src.height;
+            const ctx = cv.getContext('2d');
+            ctx.drawImage(src, 0, 0);
+            const data = ctx.getImageData(0, 0, cv.width, cv.height).data;
+            let minX = cv.width, minY = cv.height, maxX = 0, maxY = 0;
+            for (let y = 0; y < cv.height; y++) {
+                for (let x = 0; x < cv.width; x++) {
+                    if (data[(y * cv.width + x) * 4 + 3] > 10) {
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+            if (maxX > minX && maxY > minY) {
+                const tw = maxX - minX + 1, th = maxY - minY + 1;
+                const trimmed = document.createElement('canvas');
+                trimmed.width = tw; trimmed.height = th;
+                trimmed.getContext('2d').drawImage(cv, minX, minY, tw, th, 0, 0, tw, th);
+                this.textures.addCanvas('tile_grass_trimmed', trimmed);
+            }
+        }
         this.drawGrid();
         this.drawDecorations();
         this.drawEntryArrow();
@@ -58,6 +85,7 @@ class GameScene extends Phaser.Scene {
 
     drawGrid() {
         const gpx = 4; // 背景像素格大小
+        const hasGrassTile = this.textures.exists('tile_grass_trimmed');
         for (let r = 0; r < ROWS; r++) {
             const rowGfx = this.add.graphics().setDepth(r * 10);
             for (let c = 0; c < COLS; c++) {
@@ -75,31 +103,22 @@ class GameScene extends Phaser.Scene {
                             }
                         }
                     }
-                } else if (type === 'buildable') {
-                    drawBlock(rowGfx, c, r, COLORS.buildTop, COLORS.buildFront);
-                    // 像素風可建造標記
-                    const cx = c * TILE_W + TILE_W / 2, cy = r * TILE_H + TILE_H / 2;
-                    rowGfx.fillStyle(0x81c784, 0.3);
-                    rowGfx.fillRect(cx - gpx, cy - gpx/2, gpx*2, gpx);
-                    rowGfx.fillRect(cx - gpx/2, cy - gpx, gpx, gpx*2);
                 } else {
-                    const ci = (c * 7 + r * 13) % COLORS.grassTop.length;
-                    drawBlock(rowGfx, c, r, COLORS.grassTop[ci], COLORS.grassFront[ci]);
-                    // 像素風草地紋理
-                    const x0 = c * TILE_W, y0 = r * TILE_H;
-                    const accent = COLORS.grassTop[(ci + 1) % COLORS.grassTop.length];
-                    const dark = COLORS.grassFront[ci];
-                    for (let py = 0; py < TILE_H; py += gpx) {
-                        for (let px = 0; px < TILE_W; px += gpx) {
-                            const rnd = this.seededRandom();
-                            if (rnd < 0.12) {
-                                rowGfx.fillStyle(accent, 0.35);
-                                rowGfx.fillRect(x0 + px, y0 + py, gpx, gpx);
-                            } else if (rnd < 0.18) {
-                                rowGfx.fillStyle(dark, 0.2);
-                                rowGfx.fillRect(x0 + px, y0 + py, gpx, gpx);
-                            }
-                        }
+                    // 草地和可建造格都用草地圖片
+                    if (hasGrassTile) {
+                        this.add.image(c * TILE_W, r * TILE_H, 'tile_grass_trimmed')
+                            .setOrigin(0, 0).setDepth(r * 10)
+                            .setDisplaySize(TILE_W, TILE_H);
+                    } else {
+                        const ci = (c * 7 + r * 13) % COLORS.grassTop.length;
+                        drawBlock(rowGfx, c, r, COLORS.grassTop[ci], COLORS.grassFront[ci]);
+                    }
+                    // 可建造格加十字標記
+                    if (type === 'buildable') {
+                        const cx = c * TILE_W + TILE_W / 2, cy = r * TILE_H + TILE_H / 2;
+                        rowGfx.fillStyle(0xffffff, 0.25);
+                        rowGfx.fillRect(cx - gpx, cy - gpx/2, gpx*2, gpx);
+                        rowGfx.fillRect(cx - gpx/2, cy - gpx, gpx, gpx*2);
                     }
                 }
             }

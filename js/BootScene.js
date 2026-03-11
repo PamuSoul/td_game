@@ -9,6 +9,7 @@ class BootScene extends Phaser.Scene {
 
     preload() {
         this.load.image('tower_arrow', 'assets/Arrow_Tower.png');
+        this.load.image('tile_grass', 'assets/草地地磚.png');
     }
 
     create() {
