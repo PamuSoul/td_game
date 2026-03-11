@@ -1,13 +1,10 @@
 // ============================================
-// 主遊戲場景 - 核心遊戲邏輯（等角視角）
+// 主遊戲場景 - 2.5D 矩形方塊視角
 // ============================================
 
 class GameScene extends Phaser.Scene {
-    constructor() {
-        super('GameScene');
-    }
+    constructor() { super('GameScene'); }
 
-    // ── 場景初始化 ──────────────────────────
     create() {
         this.gold = 200;
         this.lives = 20;
@@ -25,10 +22,11 @@ class GameScene extends Phaser.Scene {
         this.buildGrid();
         this.drawGrid();
         this.drawDecorations();
+        this.drawEntryArrow();
+        this.drawExitCastle();
         this.createUI();
         this.setupInput();
-
-        this.previewGfx = this.add.graphics().setDepth(100);
+        this.previewGfx = this.add.graphics().setDepth(900);
     }
 
     seededRandom() {
@@ -36,7 +34,7 @@ class GameScene extends Phaser.Scene {
         return (this.decoSeed & 0x7fffffff) / 2147483647;
     }
 
-    // ── 地圖格子建構 ────────────────────────
+    // ── 地圖 ──
 
     buildGrid() {
         this.pathTiles = computePathTiles(PATH_WAYPOINTS);
@@ -51,90 +49,47 @@ class GameScene extends Phaser.Scene {
             const [c, r] = key.split(',').map(Number);
             for (const [dc, dr] of [[-1,0],[1,0],[0,-1],[0,1]]) {
                 const nc = c + dc, nr = r + dr;
-                if (nc >= 0 && nc < COLS && nr >= 0 && nr < ROWS && this.grid[nc][nr] === 'empty') {
+                if (nc >= 0 && nc < COLS && nr >= 0 && nr < ROWS && this.grid[nc][nr] === 'empty')
                     this.grid[nc][nr] = 'buildable';
-                }
             }
         });
     }
 
-    /** 繪製等角地圖（從後往前繪製確保正確遮擋） */
     drawGrid() {
-        // 依 row 由小到大（後→前）繪製，確保前方格子蓋住後方
         for (let r = 0; r < ROWS; r++) {
-            const rowGfx = this.add.graphics().setDepth(r * 2);
+            const rowGfx = this.add.graphics().setDepth(r * 10);
             for (let c = 0; c < COLS; c++) {
-                const center = gridCenterToScreen(c, r);
                 const type = this.grid[c][r];
-
                 if (type === 'path') {
-                    this.drawPathTile(rowGfx, center.x, center.y);
+                    drawBlock(rowGfx, c, r, COLORS.pathTop, COLORS.pathFront);
+                    const cx = c * TILE_W + TILE_W / 2, cy = r * TILE_H + TILE_H / 2;
+                    for (let i = 0; i < 4; i++) {
+                        const ox = (this.seededRandom() - 0.5) * TILE_W * 0.6;
+                        const oy = (this.seededRandom() - 0.5) * TILE_H * 0.5;
+                        rowGfx.fillStyle(0x8a7a60, 0.3);
+                        const s = 1 + this.seededRandom();
+                        rowGfx.fillRect(cx + ox, cy + oy, s, s);
+                    }
                 } else if (type === 'buildable') {
-                    this.drawBuildableTile(rowGfx, center.x, center.y, c, r);
+                    drawBlock(rowGfx, c, r, COLORS.buildTop, COLORS.buildFront);
+                    const cx = c * TILE_W + TILE_W / 2, cy = r * TILE_H + TILE_H / 2;
+                    rowGfx.lineStyle(1, 0x81c784, 0.2);
+                    rowGfx.lineBetween(cx - 5, cy, cx + 5, cy);
+                    rowGfx.lineBetween(cx, cy - 4, cx, cy + 4);
                 } else {
-                    this.drawGrassTile(rowGfx, center.x, center.y, c, r);
+                    const ci = (c * 7 + r * 13) % COLORS.grassTop.length;
+                    drawBlock(rowGfx, c, r, COLORS.grassTop[ci], COLORS.grassFront[ci]);
+                    const cx = c * TILE_W + TILE_W / 2, cy = r * TILE_H + TILE_H / 2;
+                    const accent = COLORS.grassTop[(ci + 1) % COLORS.grassTop.length];
+                    for (let i = 0; i < 3; i++) {
+                        const ox = (this.seededRandom() - 0.5) * TILE_W * 0.5;
+                        const oy = (this.seededRandom() - 0.5) * TILE_H * 0.4;
+                        rowGfx.fillStyle(accent, 0.25);
+                        rowGfx.fillCircle(cx + ox, cy + oy, 1 + this.seededRandom());
+                    }
                 }
             }
         }
-
-        // 路徑方向線（沿著路面中心）
-        const pathLine = this.add.graphics().setDepth(ROWS * 2 + 1);
-        pathLine.lineStyle(2, 0xd4c4a0, 0.3);
-        for (let i = 0; i < PATH_WAYPOINTS.length - 1; i++) {
-            const a = gridCenterToScreen(PATH_WAYPOINTS[i].col, PATH_WAYPOINTS[i].row);
-            const b = gridCenterToScreen(PATH_WAYPOINTS[i + 1].col, PATH_WAYPOINTS[i + 1].row);
-            pathLine.lineBetween(a.x, a.y, b.x, b.y);
-        }
-
-        // 入口箭頭 & 出口城堡
-        this.drawEntryArrow();
-        this.drawExitCastle();
-    }
-
-    drawGrassTile(gfx, cx, cy, c, r) {
-        const ci = (c * 7 + r * 13) % COLORS.grassTop.length;
-        drawIsoTile(gfx, cx, cy,
-            COLORS.grassTop[ci], COLORS.grassLeft[ci], COLORS.grassRight[ci]);
-
-        // 草地紋理
-        const accent = COLORS.grassTop[(ci + 1) % COLORS.grassTop.length];
-        for (let i = 0; i < 3; i++) {
-            const ox = (this.seededRandom() - 0.5) * ISO_W * 0.5;
-            const oy = (this.seededRandom() - 0.5) * ISO_H * 0.4;
-            gfx.fillStyle(accent, 0.25);
-            gfx.fillCircle(cx + ox, cy + oy, 1 + this.seededRandom());
-        }
-    }
-
-    drawPathTile(gfx, cx, cy) {
-        drawIsoTile(gfx, cx, cy, COLORS.pathTop, COLORS.pathLeft, COLORS.pathRight, ISO_DEPTH - 2);
-
-        // 沙土紋理
-        for (let i = 0; i < 5; i++) {
-            const ox = (this.seededRandom() - 0.5) * ISO_W * 0.5;
-            const oy = (this.seededRandom() - 0.5) * ISO_H * 0.35;
-            gfx.fillStyle(COLORS.pathEdge, 0.3);
-            const s = 1 + this.seededRandom();
-            gfx.fillRect(cx + ox, cy + oy, s, s);
-        }
-        for (let i = 0; i < 2; i++) {
-            const ox = (this.seededRandom() - 0.5) * ISO_W * 0.3;
-            const oy = (this.seededRandom() - 0.5) * ISO_H * 0.2;
-            gfx.fillStyle(0xd4c4a0, 0.2);
-            gfx.fillCircle(cx + ox, cy + oy, 1);
-        }
-    }
-
-    drawBuildableTile(gfx, cx, cy, c, r) {
-        drawIsoTile(gfx, cx, cy, COLORS.buildTop, COLORS.buildLeft, COLORS.buildRight);
-
-        // 角落可建造標記
-        strokeDiamond(gfx, cx, cy, ISO_W - 10, ISO_H - 5, 0x81c784, 0.25, 1);
-
-        // 小十字標記
-        gfx.lineStyle(1, 0x81c784, 0.2);
-        gfx.lineBetween(cx - 4, cy, cx + 4, cy);
-        gfx.lineBetween(cx, cy - 2, cx, cy + 2);
     }
 
     drawEntryArrow() {
@@ -142,19 +97,15 @@ class GameScene extends Phaser.Scene {
         const wp1 = PATH_WAYPOINTS[1];
         const from = gridCenterToScreen(wp0.col, wp0.row);
         const to = gridCenterToScreen(wp1.col, wp1.row);
-        const depth = (wp0.col + wp0.row + 1) * 2 + 1;
+        const depth = wp0.row * 10 + 5;
 
-        // 計算怪物行進方向角度
         const angle = Math.atan2(to.y - from.y, to.x - from.x);
 
         const g = this.add.graphics().setDepth(depth);
-        // 以原點 (0,0) 畫箭頭（指向右方），再旋轉到正確方向
-        // 箭頭三角
         g.fillStyle(0x4caf50, 0.9);
         g.fillTriangle(18, 0, -8, -14, -8, 14);
         g.fillStyle(0x66bb6a);
         g.fillTriangle(14, 0, -5, -10, -5, 10);
-        // 箭桿
         g.fillStyle(0x388e3c);
         g.fillRect(-24, -4, 18, 8);
         g.fillStyle(0x4caf50);
@@ -167,75 +118,62 @@ class GameScene extends Phaser.Scene {
     drawExitCastle() {
         const wp = PATH_WAYPOINTS[PATH_WAYPOINTS.length - 1];
         const pos = gridCenterToScreen(wp.col, wp.row);
-        const depth = (wp.col + wp.row + 1) * 2 + 2;
+        const depth = wp.row * 10 + 6;
 
         const g = this.add.graphics().setDepth(depth);
         const cx = pos.x, cy = pos.y;
 
-        // 城牆主體
         g.fillStyle(0x8d6e63);
-        g.fillRect(cx - 18, cy - 16, 36, 24);
+        g.fillRect(cx - 18, cy - 14, 36, 22);
         g.fillStyle(0xa1887f);
-        g.fillRect(cx - 16, cy - 14, 32, 20);
+        g.fillRect(cx - 16, cy - 12, 32, 18);
 
-        // 城垛（頂部鋸齒）
         g.fillStyle(0x8d6e63);
         for (let i = 0; i < 5; i++) {
-            g.fillRect(cx - 18 + i * 9, cy - 22, 5, 8);
+            g.fillRect(cx - 18 + i * 9, cy - 20, 5, 8);
         }
 
-        // 大門
         g.fillStyle(0x4e342e);
-        g.fillRect(cx - 6, cy - 4, 12, 16);
+        g.fillRect(cx - 6, cy - 2, 12, 14);
         g.fillStyle(0x3e2723);
-        g.fillRect(cx - 4, cy - 2, 8, 14);
+        g.fillRect(cx - 4, cy, 8, 12);
 
-        // 門上拱形
         g.fillStyle(0x6d4c41);
-        g.fillCircle(cx, cy - 4, 6);
+        g.fillCircle(cx, cy - 2, 6);
         g.fillStyle(0x4e342e);
-        g.fillCircle(cx, cy - 4, 4);
+        g.fillCircle(cx, cy - 2, 4);
 
-        // 兩側小塔
         g.fillStyle(0x795548);
-        g.fillRect(cx - 22, cy - 20, 8, 28);
-        g.fillRect(cx + 14, cy - 20, 8, 28);
-        // 小塔頂
+        g.fillRect(cx - 22, cy - 18, 8, 26);
+        g.fillRect(cx + 14, cy - 18, 8, 26);
         g.fillStyle(0xef5350);
-        g.fillTriangle(cx - 22, cy - 20, cx - 14, cy - 20, cx - 18, cy - 28);
-        g.fillTriangle(cx + 14, cy - 20, cx + 22, cy - 20, cx + 18, cy - 28);
+        g.fillTriangle(cx - 22, cy - 18, cx - 14, cy - 18, cx - 18, cy - 26);
+        g.fillTriangle(cx + 14, cy - 18, cx + 22, cy - 18, cx + 18, cy - 26);
 
-        // 旗子
         g.fillStyle(0x5d4037);
-        g.fillRect(cx - 1, cy - 38, 2, 20);
+        g.fillRect(cx - 1, cy - 36, 2, 20);
         g.fillStyle(0xef5350);
-        g.fillTriangle(cx + 1, cy - 38, cx + 14, cy - 33, cx + 1, cy - 28);
-
-        // 旗子飄動動畫
-        this.tweens.add({
-            targets: g, y: -3, duration: 1500,
-            yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
-        });
+        g.fillTriangle(cx + 1, cy - 36, cx + 14, cy - 31, cx + 1, cy - 26);
     }
 
-    /** 繪製裝飾（小樹、石頭） */
     drawDecorations() {
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
                 if (this.grid[c][r] !== 'empty') continue;
                 const rand = this.seededRandom();
-                const center = gridCenterToScreen(c, r);
-                const depth = (c + r + 1) * 2;
+                const cx = c * TILE_W + TILE_W / 2;
+                const cy = r * TILE_H + TILE_H / 2;
+                const depth = r * 10 + 1;
                 const decoGfx = this.add.graphics().setDepth(depth);
 
                 if (rand < 0.12) {
-                    this.drawTree(decoGfx, center.x, center.y - 10);
+                    this.drawTree(decoGfx, cx, cy - 8);
                 } else if (rand < 0.20) {
-                    this.drawRock(decoGfx, center.x, center.y);
+                    this.drawRock(decoGfx, cx, cy);
                 } else if (rand < 0.28) {
                     const ox = (this.seededRandom() - 0.5) * 16;
                     const oy = (this.seededRandom() - 0.5) * 8;
-                    this.drawFlower(decoGfx, center.x + ox, center.y + oy);
+                    this.drawFlower(decoGfx, cx + ox, cy + oy);
                 }
             }
         }
@@ -270,12 +208,11 @@ class GameScene extends Phaser.Scene {
         gfx.fillCircle(x, y, 1);
     }
 
-    // ── 使用者介面 ──────────────────────────
+    // ── UI ──
 
     createUI() {
         const uiY = PLAYFIELD_H;
 
-        // UI 漸層背景
         const uiBg = this.add.graphics().setDepth(200);
         for (let i = 0; i < UI_HEIGHT; i++) {
             const t = i / UI_HEIGHT;
@@ -288,14 +225,12 @@ class GameScene extends Phaser.Scene {
         uiBg.lineStyle(1, 0x5a5a8a, 0.6);
         uiBg.lineBetween(0, uiY, GAME_WIDTH, uiY);
 
-        // 資源面板
         const panelGfx = this.add.graphics().setDepth(200);
         panelGfx.fillStyle(0x1e1e36, 0.8);
         panelGfx.fillRoundedRect(8, uiY + 6, 200, 68, 6);
         panelGfx.lineStyle(1, 0x3a3a5c, 0.5);
         panelGfx.strokeRoundedRect(8, uiY + 6, 200, 68, 6);
 
-        // 金幣圖示位置（金幣飛向此處）
         this.goldIconX = 24;
         this.goldIconY = uiY + 12;
 
@@ -309,7 +244,6 @@ class GameScene extends Phaser.Scene {
             fontSize: '13px', color: COLORS.uiWave,
         }).setDepth(201);
 
-        // 防禦塔按鈕
         this.towerButtons = [];
         const types = ['arrow', 'cannon', 'ice'];
         const icons = ['🏹', '💣', '❄️'];
@@ -327,7 +261,6 @@ class GameScene extends Phaser.Scene {
 
             const hitArea = this.add.rectangle(bx + 60, uiY + 40, 120, 68)
                 .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(202);
-            hitArea.towerType = type;
             hitArea.on('pointerdown', (pointer) => {
                 pointer.event.stopPropagation();
                 this.selectTower(type);
@@ -337,7 +270,6 @@ class GameScene extends Phaser.Scene {
             bx += 132;
         });
 
-        // 下一波按鈕
         this.nextWaveBg = this.add.graphics().setDepth(200);
         this.drawNextWaveBtn(0xc62828, 0xe53935);
         this.nextWaveText = this.add.text(GAME_WIDTH - 95, uiY + 40, '下 一 波', {
@@ -351,7 +283,6 @@ class GameScene extends Phaser.Scene {
             if (!this.waveActive) this.startWave();
         });
 
-        // 訊息提示
         this.msgText = this.add.text(GAME_WIDTH / 2, PLAYFIELD_H - 30, '', {
             fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
             backgroundColor: '#1a1a2ecc', padding: { x: 16, y: 6 },
@@ -421,13 +352,12 @@ class GameScene extends Phaser.Scene {
         this.updateTowerButtons();
     }
 
-    // ── 輸入處理 ────────────────────────────
+    // ── 輸入 ──
 
     setupInput() {
         this.input.on('pointerdown', (pointer) => {
             if (pointer.y >= PLAYFIELD_H) return;
             if (!this.selectedTowerType) return;
-
             const { col, row } = screenToGrid(pointer.x, pointer.y);
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
             this.placeTower(col, row, this.selectedTowerType);
@@ -436,7 +366,6 @@ class GameScene extends Phaser.Scene {
         this.input.on('pointermove', (pointer) => {
             this.previewGfx.clear();
             if (!this.selectedTowerType || pointer.y >= PLAYFIELD_H) return;
-
             const { col, row } = screenToGrid(pointer.x, pointer.y);
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
 
@@ -446,23 +375,21 @@ class GameScene extends Phaser.Scene {
             const canAfford = this.gold >= cfg.cost;
 
             if (valid) {
-                // 範圍橢圓（等角投影下圓變橢圓）
                 const color = canAfford ? 0x4caf50 : 0xef5350;
                 this.previewGfx.lineStyle(2, color, 0.3);
-                this.previewGfx.strokeEllipse(center.x, center.y, cfg.range * 2.5, cfg.range * 1.25);
+                this.previewGfx.strokeCircle(center.x, center.y, cfg.range);
                 this.previewGfx.fillStyle(color, 0.08);
-                this.previewGfx.fillEllipse(center.x, center.y, cfg.range * 2.5, cfg.range * 1.25);
+                this.previewGfx.fillCircle(center.x, center.y, cfg.range);
 
-                // 塔預覽菱形
-                drawDiamond(this.previewGfx, center.x, center.y, ISO_W - 8, ISO_H - 4,
-                    cfg.color, canAfford ? 0.5 : 0.25);
-                strokeDiamond(this.previewGfx, center.x, center.y, ISO_W - 8, ISO_H - 4,
-                    canAfford ? 0xffffff : 0xff0000, 0.5, 1);
+                this.previewGfx.fillStyle(cfg.color, canAfford ? 0.5 : 0.25);
+                this.previewGfx.fillRect(col * TILE_W + 4, row * TILE_H + 4, TILE_W - 8, TILE_H - 8);
+                this.previewGfx.lineStyle(1, canAfford ? 0xffffff : 0xff0000, 0.5);
+                this.previewGfx.strokeRect(col * TILE_W + 4, row * TILE_H + 4, TILE_W - 8, TILE_H - 8);
             }
         });
     }
 
-    // ── 建塔系統 ────────────────────────────
+    // ── 建塔 ──
 
     placeTower(col, row, type) {
         if (this.grid[col][row] !== 'buildable') {
@@ -480,77 +407,78 @@ class GameScene extends Phaser.Scene {
 
         const logicalPos = gridToPixel(col, row);
         const screenPos = gridCenterToScreen(col, row);
-        const towerDepth = (col + row + 1) * 2 + 1;
+        const towerDepth = row * 10 + 5;
 
         const tower = {
             type, col, row,
-            x: logicalPos.x, y: logicalPos.y,     // 邏輯座標（射程計算用）
-            sx: screenPos.x, sy: screenPos.y,       // 螢幕座標（渲染用）
+            x: logicalPos.x, y: logicalPos.y,
+            sx: screenPos.x, sy: screenPos.y,
             lastFired: 0,
             range: cfg.range, damage: cfg.damage, fireRate: cfg.fireRate,
         };
 
-        // 繪製等角塔身
         const gfx = this.add.graphics().setDepth(towerDepth);
 
-        // 底座（等角菱形）
-        drawDiamondLeft(gfx, 0, 0, ISO_W - 8, ISO_H - 4, 16, cfg.colorDark);
-        drawDiamondRight(gfx, 0, 0, ISO_W - 8, ISO_H - 4, 16, cfg.color);
-        drawDiamond(gfx, 0, -8, ISO_W - 8, ISO_H - 4, cfg.colorLight);
+        // 塔身方塊
+        const bx = col * TILE_W + 6, by = row * TILE_H;
+        const bw = TILE_W - 12, bh = TILE_H - 4;
+        gfx.fillStyle(cfg.colorDark);
+        gfx.fillRect(bx, by + bh, bw, 8);
+        gfx.fillStyle(cfg.color);
+        gfx.fillRect(bx, by - 4, bw, bh);
+        gfx.fillStyle(cfg.colorLight);
+        gfx.fillRect(bx + 2, by - 2, bw - 4, bh - 4);
 
-        // 塔頂特色圖形
+        // 塔頂圖示
+        const tx = screenPos.x, ty = screenPos.y - 6;
         if (type === 'arrow') {
             gfx.fillStyle(0x81c784);
-            gfx.fillCircle(0, -14, 8);
+            gfx.fillCircle(tx, ty, 8);
             gfx.fillStyle(0x66bb6a);
-            gfx.fillCircle(0, -14, 5);
-            // 箭頭
+            gfx.fillCircle(tx, ty, 5);
             gfx.lineStyle(2, 0xc8e6c9, 0.9);
-            gfx.lineBetween(0, -22, 0, -8);
-            gfx.lineBetween(-2, -19, 0, -23);
-            gfx.lineBetween(2, -19, 0, -23);
+            gfx.lineBetween(tx, ty - 8, tx, ty + 6);
+            gfx.lineBetween(tx - 2, ty - 5, tx, ty - 9);
+            gfx.lineBetween(tx + 2, ty - 5, tx, ty - 9);
         } else if (type === 'cannon') {
             gfx.fillStyle(0xbdbdbd);
-            gfx.fillRect(-4, -22, 8, 10);
+            gfx.fillRect(tx - 4, ty - 8, 8, 10);
             gfx.fillStyle(0x9e9e9e);
-            gfx.fillRect(-6, -14, 12, 6);
+            gfx.fillRect(tx - 6, ty, 12, 6);
             gfx.fillStyle(0x757575);
-            gfx.fillCircle(0, -10, 5);
+            gfx.fillCircle(tx, ty + 4, 5);
             gfx.lineStyle(1, 0xe0e0e0, 0.5);
-            gfx.strokeCircle(0, -10, 5);
+            gfx.strokeCircle(tx, ty + 4, 5);
         } else if (type === 'ice') {
             gfx.fillStyle(0x90caf9, 0.8);
-            gfx.fillTriangle(0, -24, -8, -8, 8, -8);
+            gfx.fillTriangle(tx, ty - 12, tx - 8, ty + 4, tx + 8, ty + 4);
             gfx.fillStyle(0x64b5f6, 0.9);
-            gfx.fillTriangle(0, -4, -6, -14, 6, -14);
+            gfx.fillTriangle(tx, ty + 8, tx - 6, ty - 2, tx + 6, ty - 2);
             gfx.lineStyle(1, 0xe3f2fd, 0.6);
-            gfx.lineBetween(0, -24, 0, -4);
-            gfx.lineBetween(-8, -14, 8, -14);
+            gfx.lineBetween(tx, ty - 12, tx, ty + 8);
+            gfx.lineBetween(tx - 8, ty - 2, tx + 8, ty - 2);
         }
 
-        gfx.setPosition(screenPos.x, screenPos.y);
         tower.graphics = gfx;
         this.towers.push(tower);
         this.updateUI();
 
-        // 建造動畫
         gfx.setScale(0.3).setAlpha(0.5);
         this.tweens.add({
             targets: gfx, scaleX: 1, scaleY: 1, alpha: 1,
             duration: 250, ease: 'Back.easeOut',
         });
 
-        // 光環
         const ring = this.add.graphics().setDepth(towerDepth + 1).setPosition(screenPos.x, screenPos.y);
         ring.lineStyle(2, cfg.colorLight, 0.6);
-        ring.strokeEllipse(0, 0, 40, 20);
+        ring.strokeCircle(0, 0, 20);
         this.tweens.add({
             targets: ring, scaleX: 3, scaleY: 3, alpha: 0,
             duration: 400, onComplete: () => ring.destroy(),
         });
     }
 
-    // ── 波次系統 ────────────────────────────
+    // ── 波次 ──
 
     startWave() {
         if (this.waveActive) return;
@@ -577,11 +505,10 @@ class GameScene extends Phaser.Scene {
         this.showMessage(`— 第 ${this.waveNumber} 波 —${isBossWave ? '  ⚠️ BOSS 來襲！' : ''}`, 2000);
     }
 
-    // ── 敵人系統 ────────────────────────────
+    // ── 敵人 ──
 
     spawnEnemy(data) {
         const start = gridToPixel(PATH_WAYPOINTS[0].col, PATH_WAYPOINTS[0].row);
-        const startScreen = logicalToScreen(start.x, start.y);
         const enemy = {
             ...data,
             x: start.x, y: start.y,
@@ -590,16 +517,14 @@ class GameScene extends Phaser.Scene {
             alive: true,
         };
 
-        const container = this.add.container(startScreen.x, startScreen.y).setDepth(10);
+        const container = this.add.container(start.x, start.y).setDepth(10);
         const radius = data.isBoss ? 18 : 11;
 
-        // 陰影（等角橢圓）
         const shadow = this.add.graphics();
         shadow.fillStyle(0x000000, 0.25);
-        shadow.fillEllipse(2, radius - 2, radius * 2, radius * 0.7);
+        shadow.fillEllipse(2, radius - 2, radius * 2, radius * 0.8);
         container.add(shadow);
 
-        // 本體
         const body = this.add.graphics();
         if (data.isBoss) {
             body.fillStyle(COLORS.enemyBossGlow, 0.15);
@@ -632,7 +557,6 @@ class GameScene extends Phaser.Scene {
         }
         container.add(body);
 
-        // 血量條
         const hpBg = this.add.graphics();
         hpBg.fillStyle(0x000000, 0.5);
         hpBg.fillRoundedRect(-16, -radius - 12, 32, 6, 3);
@@ -666,8 +590,8 @@ class GameScene extends Phaser.Scene {
         }
 
         const target = PATH_WAYPOINTS[enemy.waypointIndex];
-        const tx = target.col * TILE + TILE / 2;
-        const ty = target.row * TILE + TILE / 2;
+        const tx = target.col * TILE_W + TILE_W / 2;
+        const ty = target.row * TILE_H + TILE_H / 2;
         const dx = tx - enemy.x, dy = ty - enemy.y;
         const d = Math.sqrt(dx * dx + dy * dy);
 
@@ -675,8 +599,7 @@ class GameScene extends Phaser.Scene {
         const move = effectiveSpeed * (delta / 1000);
 
         if (d <= move) {
-            enemy.x = tx;
-            enemy.y = ty;
+            enemy.x = tx; enemy.y = ty;
             enemy.waypointIndex++;
         } else {
             enemy.x += (dx / d) * move;
@@ -685,12 +608,8 @@ class GameScene extends Phaser.Scene {
 
         if (enemy.slowTimer > 0) enemy.slowTimer -= delta;
 
-        // 邏輯座標 → 螢幕座標
-        const screen = logicalToScreen(enemy.x, enemy.y);
-        enemy.container.setPosition(screen.x, screen.y);
-
-        // 根據螢幕 Y 動態調整深度（前方的敵人蓋在後方之上）
-        enemy.container.setDepth(Math.floor(screen.y) + 50);
+        enemy.container.setPosition(enemy.x, enemy.y);
+        enemy.container.setDepth(Math.floor(enemy.y) + 50);
     }
 
     damageEnemy(enemy, damage, type) {
@@ -765,55 +684,48 @@ class GameScene extends Phaser.Scene {
         this.enemiesAlive--;
         this.updateUI();
 
-        const screen = logicalToScreen(enemy.x, enemy.y);
+        const ex = enemy.x, ey = enemy.y;
 
-        // 爆炸特效
         const colors = enemy.isBoss
             ? [0xff4081, 0xff80ab, 0xffffff]
             : [0xffeb3b, 0xff9800, 0xffffff];
         colors.forEach((color, i) => {
             const fx = this.add.graphics().setDepth(500);
             fx.fillStyle(color, 0.6 - i * 0.15);
-            fx.fillCircle(screen.x, screen.y, 10 + i * 5);
+            fx.fillCircle(ex, ey, 10 + i * 5);
             this.tweens.add({
                 targets: fx, alpha: 0, scaleX: 2.5, scaleY: 2.5,
                 duration: 350 + i * 100, onComplete: () => fx.destroy(),
             });
         });
 
-        // 碎片粒子
         for (let i = 0; i < 5; i++) {
             const angle = (i / 5) * Math.PI * 2;
             const particle = this.add.graphics().setDepth(500);
             particle.fillStyle(enemy.isBoss ? 0xff4081 : 0xef5350, 0.8);
             particle.fillCircle(0, 0, 1.5 + Math.random() * 1.5);
-            particle.setPosition(screen.x, screen.y);
+            particle.setPosition(ex, ey);
             this.tweens.add({
                 targets: particle,
-                x: screen.x + Math.cos(angle) * (25 + Math.random() * 15),
-                y: screen.y + Math.sin(angle) * (20 + Math.random() * 10),
+                x: ex + Math.cos(angle) * (25 + Math.random() * 15),
+                y: ey + Math.sin(angle) * (20 + Math.random() * 10),
                 alpha: 0, duration: 350,
                 onComplete: () => particle.destroy(),
             });
         }
 
-        // 金幣飛向左下角的金幣 UI
-        const popup = this.add.text(screen.x, screen.y - 10, `+${enemy.reward}`, {
+        const popup = this.add.text(ex, ey - 10, `+${enemy.reward}`, {
             fontSize: '16px', color: '#ffd54f', fontStyle: 'bold',
             stroke: '#5d4037', strokeThickness: 2,
         }).setOrigin(0.5).setDepth(500);
 
         this.tweens.add({
             targets: popup,
-            x: this.goldIconX + 30,
-            y: this.goldIconY,
-            alpha: 0.3,
-            scaleX: 0.6, scaleY: 0.6,
-            duration: 700,
-            ease: 'Cubic.easeIn',
+            x: this.goldIconX + 30, y: this.goldIconY,
+            alpha: 0.3, scaleX: 0.6, scaleY: 0.6,
+            duration: 700, ease: 'Cubic.easeIn',
             onComplete: () => {
                 popup.destroy();
-                // 金幣到達時的閃光
                 const flash = this.add.graphics().setDepth(300);
                 flash.fillStyle(0xffd54f, 0.5);
                 flash.fillCircle(this.goldIconX + 10, this.goldIconY + 10, 12);
@@ -851,7 +763,7 @@ class GameScene extends Phaser.Scene {
         }
     }
 
-    // ── 防禦塔攻擊系統 ──────────────────────
+    // ── 攻擊 ──
 
     findTarget(tower) {
         let best = null, bestPriority = -1;
@@ -860,7 +772,7 @@ class GameScene extends Phaser.Scene {
             const d = dist(tower.x, tower.y, enemy.x, enemy.y);
             if (d > tower.range) continue;
             const wp = PATH_WAYPOINTS[Math.min(enemy.waypointIndex, PATH_WAYPOINTS.length - 1)];
-            const distToWp = dist(enemy.x, enemy.y, wp.col * TILE + TILE / 2, wp.row * TILE + TILE / 2);
+            const distToWp = dist(enemy.x, enemy.y, wp.col * TILE_W + TILE_W / 2, wp.row * TILE_H + TILE_H / 2);
             const priority = enemy.waypointIndex * 10000 - distToWp;
             if (priority > bestPriority) {
                 bestPriority = priority;
@@ -891,7 +803,6 @@ class GameScene extends Phaser.Scene {
             graphics: gfx, alive: true,
         });
 
-        // 開火閃光
         const flash = this.add.graphics().setDepth(500).setPosition(tower.sx, tower.sy);
         flash.fillStyle(cfg.projColor, 0.4);
         flash.fillCircle(0, -12, 6);
@@ -901,7 +812,7 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    // ── 投射物系統 ──────────────────────────
+    // ── 投射物 ──
 
     updateProjectile(proj, delta) {
         if (!proj.alive) return;
@@ -920,25 +831,14 @@ class GameScene extends Phaser.Scene {
             this.damageEnemy(proj.target, proj.damage, proj.type);
             proj.alive = false;
             proj.graphics.destroy();
-
-            const cfg = TOWER_TYPES[proj.type];
-            const hitScreen = logicalToScreen(proj.target.x, proj.target.y);
-            const hit = this.add.graphics().setDepth(500);
-            hit.fillStyle(cfg.projColor, 0.5);
-            hit.fillCircle(hitScreen.x, hitScreen.y, 8);
-            this.tweens.add({
-                targets: hit, alpha: 0, scaleX: 2, scaleY: 2,
-                duration: 200, onComplete: () => hit.destroy(),
-            });
         } else {
             proj.x += (dx / d) * move;
             proj.y += (dy / d) * move;
-            const screen = logicalToScreen(proj.x, proj.y);
-            proj.graphics.setPosition(screen.x, screen.y);
+            proj.graphics.setPosition(proj.x, proj.y);
         }
     }
 
-    // ── 主迴圈 ──────────────────────────────
+    // ── 主迴圈 ──
 
     update(time, delta) {
         if (this.waveActive && this.spawnQueue.length > 0) {
