@@ -20,33 +20,37 @@ class GameScene extends Phaser.Scene {
         this.decoSeed = 12345;
 
         this.buildGrid();
-        // 從草地圖片裁切出非透明區域，建立新紋理
-        if (this.textures.exists('tile_grass') && !this.textures.exists('tile_grass_trimmed')) {
-            const src = this.textures.get('tile_grass').getSourceImage();
-            const cv = document.createElement('canvas');
-            cv.width = src.width; cv.height = src.height;
-            const ctx = cv.getContext('2d');
-            ctx.drawImage(src, 0, 0);
-            const data = ctx.getImageData(0, 0, cv.width, cv.height).data;
-            let minX = cv.width, minY = cv.height, maxX = 0, maxY = 0;
-            for (let y = 0; y < cv.height; y++) {
-                for (let x = 0; x < cv.width; x++) {
-                    if (data[(y * cv.width + x) * 4 + 3] > 10) {
-                        if (x < minX) minX = x;
-                        if (x > maxX) maxX = x;
-                        if (y < minY) minY = y;
-                        if (y > maxY) maxY = y;
+        // 自動裁切所有圖片的透明區域，建立 _trimmed 紋理
+        const trimKeys = ['tile_grass', 'tower_arrow', 'tower_cannon', 'tower_ice', 'deco_tree', 'deco_flower'];
+        trimKeys.forEach(key => {
+            const trimKey = key + '_trimmed';
+            if (this.textures.exists(key) && !this.textures.exists(trimKey)) {
+                const src = this.textures.get(key).getSourceImage();
+                const cv = document.createElement('canvas');
+                cv.width = src.width; cv.height = src.height;
+                const ctx = cv.getContext('2d');
+                ctx.drawImage(src, 0, 0);
+                const data = ctx.getImageData(0, 0, cv.width, cv.height).data;
+                let minX = cv.width, minY = cv.height, maxX = 0, maxY = 0;
+                for (let y = 0; y < cv.height; y++) {
+                    for (let x = 0; x < cv.width; x++) {
+                        if (data[(y * cv.width + x) * 4 + 3] > 10) {
+                            if (x < minX) minX = x;
+                            if (x > maxX) maxX = x;
+                            if (y < minY) minY = y;
+                            if (y > maxY) maxY = y;
+                        }
                     }
                 }
+                if (maxX > minX && maxY > minY) {
+                    const tw = maxX - minX + 1, th = maxY - minY + 1;
+                    const trimmed = document.createElement('canvas');
+                    trimmed.width = tw; trimmed.height = th;
+                    trimmed.getContext('2d').drawImage(cv, minX, minY, tw, th, 0, 0, tw, th);
+                    this.textures.addCanvas(trimKey, trimmed);
+                }
             }
-            if (maxX > minX && maxY > minY) {
-                const tw = maxX - minX + 1, th = maxY - minY + 1;
-                const trimmed = document.createElement('canvas');
-                trimmed.width = tw; trimmed.height = th;
-                trimmed.getContext('2d').drawImage(cv, minX, minY, tw, th, 0, 0, tw, th);
-                this.textures.addCanvas('tile_grass_trimmed', trimmed);
-            }
-        }
+        });
         this.drawGrid();
         this.drawDecorations();
         this.drawEntryArrow();
@@ -209,24 +213,27 @@ class GameScene extends Phaser.Scene {
     }
 
     drawDecorations() {
+        const hasTree = this.textures.exists('deco_tree_trimmed');
         for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS; r++) {
+            for (let r = 1; r < ROWS; r++) {
                 if (this.grid[c][r] !== 'empty') continue;
                 const rand = this.seededRandom();
                 const cx = c * TILE_W + TILE_W / 2;
                 const cy = r * TILE_H + TILE_H / 2;
                 const depth = r * 10 + 1;
-                const decoGfx = this.add.graphics().setDepth(depth);
 
-                if (rand < 0.12) {
-                    drawPixelSprite(decoGfx, cx, cy - 4, SPR_TREE, PAL_TREE, 3);
-                } else if (rand < 0.20) {
-                    drawPixelSprite(decoGfx, cx, cy + 4, SPR_ROCK, PAL_ROCK, 3);
-                } else if (rand < 0.28) {
-                    const ox = (this.seededRandom() - 0.5) * 12;
-                    const oy = (this.seededRandom() - 0.5) * 6;
-                    const fi = Math.floor(this.seededRandom() * FLOWER_PALS.length);
-                    drawPixelSprite(decoGfx, cx + ox, cy + oy, SPR_FLOWER_R, FLOWER_PALS[fi], 3);
+                if (rand < 0.25) {
+                    if (hasTree) {
+                        const img = this.add.image(cx, cy, 'deco_tree_trimmed').setDepth(depth);
+                        const s = (TILE_H * 1.2) / img.height;
+                        img.setScale(s).setOrigin(0.5, 0.8);
+                    } else {
+                        const gfx = this.add.graphics().setDepth(depth);
+                        drawPixelSprite(gfx, cx, cy - 4, SPR_TREE, PAL_TREE, 3);
+                    }
+                } else if (rand < 0.30) {
+                    const gfx = this.add.graphics().setDepth(depth);
+                    drawPixelSprite(gfx, cx, cy + 4, SPR_ROCK, PAL_ROCK, 3);
                 }
             }
         }
@@ -413,7 +420,7 @@ class GameScene extends Phaser.Scene {
                 this.previewGfx.fillCircle(center.x, center.y, cfg.range);
 
                 // 預覽塔圖像
-                const imgKeys = { arrow: 'tower_arrow', cannon: null, ice: null };
+                const imgKeys = { arrow: 'tower_arrow_trimmed', cannon: 'tower_cannon_trimmed', ice: 'tower_ice_trimmed' };
                 const imgKey = imgKeys[this.selectedTowerType];
                 if (imgKey && this.textures.exists(imgKey)) {
                     if (!this.previewImg || this.previewImg.texture.key !== imgKey) {
@@ -466,7 +473,7 @@ class GameScene extends Phaser.Scene {
         };
 
         // 塔圖像：有圖片用圖片，否則用像素圖
-        const imgKeys = { arrow: 'tower_arrow', cannon: null, ice: null };
+        const imgKeys = { arrow: 'tower_arrow_trimmed', cannon: 'tower_cannon_trimmed', ice: 'tower_ice_trimmed' };
         let towerObj;
         let finalScale = 1;
         if (imgKeys[type] && this.textures.exists(imgKeys[type])) {
