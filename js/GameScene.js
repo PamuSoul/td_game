@@ -91,17 +91,24 @@ class GameScene extends Phaser.Scene {
             for (let c = 0; c < COLS; c++) {
                 const type = this.grid[c][r];
                 if (type === 'path') {
-                    drawBlock(rowGfx, c, r, COLORS.pathTop, COLORS.pathFront);
-                    // 像素風沙土紋理
+                    // 路徑底色
                     const x0 = c * TILE_W, y0 = r * TILE_H;
-                    const darks = [0xb09878, 0xa08868, 0x9a8060];
-                    for (let py = 0; py < TILE_H; py += gpx) {
-                        for (let px = 0; px < TILE_W; px += gpx) {
-                            if (this.seededRandom() < 0.25) {
-                                rowGfx.fillStyle(darks[Math.floor(this.seededRandom() * darks.length)], 0.4);
-                                rowGfx.fillRect(x0 + px, y0 + py, gpx, gpx);
-                            }
-                        }
+                    rowGfx.fillStyle(0xc4ad82);
+                    rowGfx.fillRect(x0, y0, TILE_W, TILE_H);
+                    // 沙土紋理
+                    rowGfx.fillStyle(0x7d6f57, 0.3);
+                    for (let i = 0; i < 6; i++) {
+                        const dx = 4 + this.seededRandom() * (TILE_W - 8);
+                        const dy = 4 + this.seededRandom() * (TILE_H - 8);
+                        const s = 1 + this.seededRandom() * 2;
+                        rowGfx.fillRect(x0 + dx, y0 + dy, s, s);
+                    }
+                    // 淡色高光點
+                    rowGfx.fillStyle(0xddd0b0, 0.3);
+                    for (let i = 0; i < 3; i++) {
+                        const dx = 8 + this.seededRandom() * (TILE_W - 16);
+                        const dy = 8 + this.seededRandom() * (TILE_H - 16);
+                        rowGfx.fillCircle(x0 + dx, y0 + dy, 1);
                     }
                 } else {
                     // 草地和可建造格都用草地圖片
@@ -123,6 +130,18 @@ class GameScene extends Phaser.Scene {
                 }
             }
         }
+
+        // 路徑邊緣加深線
+        const edgeGfx = this.add.graphics().setDepth(1);
+        this.pathTiles.forEach(key => {
+            const [c, r] = key.split(',').map(Number);
+            const x = c * TILE_W, y = r * TILE_H;
+            edgeGfx.lineStyle(2, 0x6d5f47, 0.6);
+            if (!this.pathTiles.has(`${c},${r - 1}`)) edgeGfx.lineBetween(x, y, x + TILE_W, y);
+            if (!this.pathTiles.has(`${c},${r + 1}`)) edgeGfx.lineBetween(x, y + TILE_H, x + TILE_W, y + TILE_H);
+            if (!this.pathTiles.has(`${c - 1},${r}`)) edgeGfx.lineBetween(x, y, x, y + TILE_H);
+            if (!this.pathTiles.has(`${c + 1},${r}`)) edgeGfx.lineBetween(x + TILE_W, y, x + TILE_W, y + TILE_H);
+        });
     }
 
     drawEntryArrow() {
