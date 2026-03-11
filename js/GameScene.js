@@ -86,9 +86,9 @@ class GameScene extends Phaser.Scene {
             pathLine.lineBetween(a.x, a.y, b.x, b.y);
         }
 
-        // 入口出口標記
-        this.drawPortal(PATH_WAYPOINTS[0].col, PATH_WAYPOINTS[0].row, '入口', 0x4caf50, '#2e7d32');
-        this.drawPortal(PATH_WAYPOINTS[PATH_WAYPOINTS.length - 1].col, PATH_WAYPOINTS[PATH_WAYPOINTS.length - 1].row, '出口', 0xef5350, '#c62828');
+        // 入口箭頭 & 出口城堡
+        this.drawEntryArrow();
+        this.drawExitCastle();
     }
 
     drawGrassTile(gfx, cx, cy, c, r) {
@@ -137,23 +137,83 @@ class GameScene extends Phaser.Scene {
         gfx.lineBetween(cx, cy - 2, cx, cy + 2);
     }
 
-    drawPortal(col, row, label, color, bgColor) {
-        const pos = gridCenterToScreen(col, row);
-        const depth = (col + row + 1) * 2 + 1;
+    drawEntryArrow() {
+        const wp0 = PATH_WAYPOINTS[0];
+        const wp1 = PATH_WAYPOINTS[1];
+        const from = gridCenterToScreen(wp0.col, wp0.row);
+        const to = gridCenterToScreen(wp1.col, wp1.row);
+        const depth = (wp0.col + wp0.row + 1) * 2 + 1;
+
+        // 計算怪物行進方向角度
+        const angle = Math.atan2(to.y - from.y, to.x - from.x);
 
         const g = this.add.graphics().setDepth(depth);
-        g.fillStyle(color, 0.15);
-        g.fillCircle(pos.x, pos.y, 24);
-        g.lineStyle(2, color, 0.6);
-        g.strokeCircle(pos.x, pos.y, 18);
+        // 以原點 (0,0) 畫箭頭（指向右方），再旋轉到正確方向
+        // 箭頭三角
+        g.fillStyle(0x4caf50, 0.9);
+        g.fillTriangle(18, 0, -8, -14, -8, 14);
+        g.fillStyle(0x66bb6a);
+        g.fillTriangle(14, 0, -5, -10, -5, 10);
+        // 箭桿
+        g.fillStyle(0x388e3c);
+        g.fillRect(-24, -4, 18, 8);
+        g.fillStyle(0x4caf50);
+        g.fillRect(-22, -3, 16, 6);
 
-        const txt = this.add.text(pos.x, pos.y - 24, label, {
-            fontSize: '13px', color: '#ffffff', fontStyle: 'bold',
-            backgroundColor: bgColor, padding: { x: 6, y: 2 },
-        }).setOrigin(0.5).setDepth(depth + 1);
+        g.setPosition(from.x, from.y);
+        g.setRotation(angle);
+    }
 
+    drawExitCastle() {
+        const wp = PATH_WAYPOINTS[PATH_WAYPOINTS.length - 1];
+        const pos = gridCenterToScreen(wp.col, wp.row);
+        const depth = (wp.col + wp.row + 1) * 2 + 2;
+
+        const g = this.add.graphics().setDepth(depth);
+        const cx = pos.x, cy = pos.y;
+
+        // 城牆主體
+        g.fillStyle(0x8d6e63);
+        g.fillRect(cx - 18, cy - 16, 36, 24);
+        g.fillStyle(0xa1887f);
+        g.fillRect(cx - 16, cy - 14, 32, 20);
+
+        // 城垛（頂部鋸齒）
+        g.fillStyle(0x8d6e63);
+        for (let i = 0; i < 5; i++) {
+            g.fillRect(cx - 18 + i * 9, cy - 22, 5, 8);
+        }
+
+        // 大門
+        g.fillStyle(0x4e342e);
+        g.fillRect(cx - 6, cy - 4, 12, 16);
+        g.fillStyle(0x3e2723);
+        g.fillRect(cx - 4, cy - 2, 8, 14);
+
+        // 門上拱形
+        g.fillStyle(0x6d4c41);
+        g.fillCircle(cx, cy - 4, 6);
+        g.fillStyle(0x4e342e);
+        g.fillCircle(cx, cy - 4, 4);
+
+        // 兩側小塔
+        g.fillStyle(0x795548);
+        g.fillRect(cx - 22, cy - 20, 8, 28);
+        g.fillRect(cx + 14, cy - 20, 8, 28);
+        // 小塔頂
+        g.fillStyle(0xef5350);
+        g.fillTriangle(cx - 22, cy - 20, cx - 14, cy - 20, cx - 18, cy - 28);
+        g.fillTriangle(cx + 14, cy - 20, cx + 22, cy - 20, cx + 18, cy - 28);
+
+        // 旗子
+        g.fillStyle(0x5d4037);
+        g.fillRect(cx - 1, cy - 38, 2, 20);
+        g.fillStyle(0xef5350);
+        g.fillTriangle(cx + 1, cy - 38, cx + 14, cy - 33, cx + 1, cy - 28);
+
+        // 旗子飄動動畫
         this.tweens.add({
-            targets: txt, y: txt.y - 4, duration: 1500,
+            targets: g, y: -3, duration: 1500,
             yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
         });
     }

@@ -12,7 +12,7 @@ const ISO_W = 80;
 /** 等角菱形高度 */
 const ISO_H = 40;
 /** 格子側面厚度（3D 效果） */
-const ISO_DEPTH = 10;
+const ISO_DEPTH = 30;
 
 /** 地圖欄數 */
 const COLS = 15;
