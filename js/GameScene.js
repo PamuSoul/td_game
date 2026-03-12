@@ -308,17 +308,18 @@ class GameScene extends Phaser.Scene {
 
         this.nextWaveBg = this.add.graphics().setDepth(200);
         this.drawNextWaveBtn(0xc62828, 0xe53935);
-        this.nextWaveText = this.add.text(GAME_WIDTH - 95, uiY + 40, '下 一 波', {
+        this.nextWaveText = this.add.text(GAME_WIDTH - 95, uiY + 40, '遊戲開始', {
             fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
             padding: { top: 4, bottom: 2 },
         }).setOrigin(0.5).setDepth(201);
 
-        const nextWaveHit = this.add.rectangle(GAME_WIDTH - 95, uiY + 40, 140, 60)
+        this.nextWaveHit = this.add.rectangle(GAME_WIDTH - 95, uiY + 40, 140, 60)
             .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(202);
-        nextWaveHit.on('pointerdown', (pointer) => {
+        this.nextWaveHit.on('pointerdown', (pointer) => {
             pointer.event.stopPropagation();
-            if (!this.waveActive) this.startWave();
+            if (!this.waveActive && this.waveNumber === 0) this.startWave();
         });
+        this.nextWaveCountdown = null;
 
         this.msgText = this.add.text(GAME_WIDTH / 2, PLAYFIELD_H - 30, '', {
             fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
@@ -379,12 +380,28 @@ class GameScene extends Phaser.Scene {
         this.livesText.setText(`❤️ ${this.lives}`);
         this.waveText.setText(`波數 ${this.waveNumber} / ${MAX_WAVES}`);
 
-        if (this.waveActive) {
-            this.drawNextWaveBtn(0x424242, 0x616161);
-            this.nextWaveText.setColor('#999999');
-        } else {
+        if (this.waveNumber === 0) {
+            // 還沒開始，顯示遊戲開始按鈕
+            this.nextWaveBg.setVisible(true);
+            this.nextWaveText.setVisible(true);
+            this.nextWaveHit.setVisible(true);
             this.drawNextWaveBtn(0xc62828, 0xe53935);
+            this.nextWaveText.setText('遊戲開始');
             this.nextWaveText.setColor('#ffffff');
+        } else if (this.nextWaveCountdown !== null) {
+            // 倒數中，顯示倒數秒數
+            this.nextWaveBg.setVisible(true);
+            this.nextWaveText.setVisible(true);
+            this.nextWaveHit.setVisible(false);
+            this.drawNextWaveBtn(0x424242, 0x616161);
+            const sec = Math.ceil(this.nextWaveCountdown / 1000);
+            this.nextWaveText.setText(`${sec} 秒`);
+            this.nextWaveText.setColor('#ffab40');
+        } else {
+            // 波次進行中或等待中，隱藏按鈕
+            this.nextWaveBg.setVisible(false);
+            this.nextWaveText.setVisible(false);
+            this.nextWaveHit.setVisible(false);
         }
         this.updateTowerButtons();
     }
@@ -394,9 +411,17 @@ class GameScene extends Phaser.Scene {
     setupInput() {
         this.input.on('pointerdown', (pointer) => {
             if (pointer.y >= PLAYFIELD_H) return;
-            if (!this.selectedTowerType) return;
             const { col, row } = screenToGrid(pointer.x, pointer.y);
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+
+            // 點擊已有的塔 → 升級
+            if (this.grid[col][row] === 'tower') {
+                const tower = this.towers.find(t => t.col === col && t.row === row);
+                if (tower) this.upgradeTower(tower);
+                return;
+            }
+
+            if (!this.selectedTowerType) return;
             this.placeTower(col, row, this.selectedTowerType);
         });
 
@@ -427,7 +452,7 @@ class GameScene extends Phaser.Scene {
                         if (this.previewImg) this.previewImg.destroy();
                         this.previewImg = this.add.image(0, 0, imgKey).setDepth(901);
                     }
-                    const s = (TILE_H * 2) / this.previewImg.height;
+                    const s = (TILE_H * 2) / this.previewImg.height * 0.7;
                     this.previewImg.setPosition(center.x, center.y);
                     this.previewImg.setScale(s);
                     this.previewImg.setOrigin(0.5, 0.85);
@@ -469,19 +494,21 @@ class GameScene extends Phaser.Scene {
             x: logicalPos.x, y: logicalPos.y,
             sx: screenPos.x, sy: screenPos.y,
             lastFired: 0,
+            level: 1,
             range: cfg.range, damage: cfg.damage, fireRate: cfg.fireRate,
         };
 
         // 塔圖像：有圖片用圖片，否則用像素圖
         const imgKeys = { arrow: 'tower_arrow_trimmed', cannon: 'tower_cannon_trimmed', ice: 'tower_ice_trimmed' };
         let towerObj;
-        let finalScale = 1;
+        const baseScale = this.textures.exists(imgKeys[type])
+            ? (TILE_H * 2) / this.textures.get(imgKeys[type]).getSourceImage().height : 1;
+        const levelScales = [0.7, 0.85, 1.0]; // 三階段大小
+        const finalScale = baseScale * levelScales[0];
+
         if (imgKeys[type] && this.textures.exists(imgKeys[type])) {
             const img = this.add.image(screenPos.x, screenPos.y, imgKeys[type]).setDepth(towerDepth);
-            // 縮放圖片適配格子大小（高度對齊 TILE_H * 2）
-            finalScale = (TILE_H * 2) / img.height;
             img.setScale(finalScale);
-            // 圖片往上偏移讓塔立在格子上
             img.setOrigin(0.5, 0.85);
             towerObj = img;
         } else {
@@ -493,6 +520,7 @@ class GameScene extends Phaser.Scene {
         }
 
         tower.graphics = towerObj;
+        tower.baseScale = baseScale;
         this.towers.push(tower);
         this.updateUI();
 
@@ -501,14 +529,39 @@ class GameScene extends Phaser.Scene {
             targets: towerObj, scaleX: finalScale, scaleY: finalScale, alpha: 1,
             duration: 250, ease: 'Back.easeOut',
         });
+    }
 
-        const ring = this.add.graphics().setDepth(towerDepth + 1).setPosition(screenPos.x, screenPos.y);
-        ring.lineStyle(2, cfg.colorLight, 0.6);
-        ring.strokeCircle(0, 0, 20);
+    getUpgradeCost(tower) {
+        // 升級費用：基礎費用 * 等級
+        return TOWER_TYPES[tower.type].cost * tower.level;
+    }
+
+    upgradeTower(tower) {
+        if (tower.level >= 3) return;
+        const cost = this.getUpgradeCost(tower);
+        if (this.gold < cost) {
+            this.showMessage('金幣不足！', 800);
+            return;
+        }
+        this.gold -= cost;
+        tower.level++;
+        // 提升攻擊力（每級 +50%）
+        const cfg = TOWER_TYPES[tower.type];
+        tower.damage = Math.floor(cfg.damage * (1 + (tower.level - 1) * 0.5));
+        tower.range = cfg.range + (tower.level - 1) * 15;
+        tower.fireRate = Math.max(cfg.fireRate * 0.7, cfg.fireRate - (tower.level - 1) * 100);
+
+        // 放大圖片到對應階段
+        const levelScales = [0.7, 0.85, 1.0];
+        const newScale = tower.baseScale * levelScales[tower.level - 1];
         this.tweens.add({
-            targets: ring, scaleX: 3, scaleY: 3, alpha: 0,
-            duration: 400, onComplete: () => ring.destroy(),
+            targets: tower.graphics,
+            scaleX: newScale, scaleY: newScale,
+            duration: 300, ease: 'Back.easeOut',
         });
+
+        this.showMessage(`升級到 Lv${tower.level}！`, 1000);
+        this.updateUI();
     }
 
     // ── 波次 ──
@@ -768,6 +821,11 @@ class GameScene extends Phaser.Scene {
         tower.lastFired = time;
         const cfg = TOWER_TYPES[tower.type];
 
+        // 子彈從塔圖的中間偏上方射出
+        const fireOffsetY = -TILE_H * 0.6;
+        const fireX = tower.sx;
+        const fireY = tower.sy + fireOffsetY;
+
         const gfx = this.add.graphics().setDepth(500);
         const projSize = tower.type === 'cannon' ? 5 : 3;
         gfx.fillStyle(cfg.projTrail, 0.3);
@@ -776,18 +834,18 @@ class GameScene extends Phaser.Scene {
         gfx.fillCircle(0, 0, projSize);
         gfx.fillStyle(0xffffff, 0.6);
         gfx.fillCircle(-1, -1, projSize * 0.4);
-        gfx.setPosition(tower.sx, tower.sy);
+        gfx.setPosition(fireX, fireY);
 
         this.projectiles.push({
-            x: tower.x, y: tower.y,
+            x: fireX, y: fireY,
             target, speed: 350,
             damage: tower.damage, type: tower.type,
             graphics: gfx, alive: true,
         });
 
-        const flash = this.add.graphics().setDepth(500).setPosition(tower.sx, tower.sy);
+        const flash = this.add.graphics().setDepth(500).setPosition(fireX, fireY);
         flash.fillStyle(cfg.projColor, 0.4);
-        flash.fillCircle(0, -12, 6);
+        flash.fillCircle(0, 0, 6);
         this.tweens.add({
             targets: flash, alpha: 0, scaleX: 2, scaleY: 2,
             duration: 120, onComplete: () => flash.destroy(),
@@ -833,13 +891,26 @@ class GameScene extends Phaser.Scene {
 
         if (this.waveActive && this.spawnQueue.length === 0 && this.enemiesAlive === 0) {
             this.waveActive = false;
-            this.updateUI();
             if (this.waveNumber >= MAX_WAVES) {
+                this.updateUI();
                 this.time.delayedCall(1000, () => {
                     this.scene.start('GameOverScene', { won: true, wave: this.waveNumber });
                 });
             } else {
+                // 隨機 15 秒後自動出下一波
+                this.nextWaveCountdown = 15000;
                 this.showMessage(`第 ${this.waveNumber} 波完成！`, 2000);
+                this.updateUI();
+            }
+        }
+
+        // 倒數計時自動出波
+        if (this.nextWaveCountdown !== null) {
+            this.nextWaveCountdown -= delta;
+            this.updateUI();
+            if (this.nextWaveCountdown <= 0) {
+                this.nextWaveCountdown = null;
+                this.startWave();
             }
         }
 

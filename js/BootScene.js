@@ -8,7 +8,7 @@ class BootScene extends Phaser.Scene {
     }
 
     preload() {
-        this.load.image('tower_arrow', 'assets/Arrow_Tower.png');
+        this.load.image('tower_arrow', 'assets/箭塔.png');
         this.load.image('tower_cannon', 'assets/砲塔.png');
         this.load.image('tower_ice', 'assets/冰塔.png');
         this.load.image('tile_grass', 'assets/草地地磚.png');
@@ -58,15 +58,42 @@ class BootScene extends Phaser.Scene {
             deco.lineBetween(0, y, GAME_WIDTH, y);
         }
 
+        // 裁切圖片透明區域（供主頁展示用）
+        ['tower_arrow', 'tower_cannon', 'tower_ice'].forEach(key => {
+            const tk = key + '_trimmed';
+            if (this.textures.exists(key) && !this.textures.exists(tk)) {
+                const src = this.textures.get(key).getSourceImage();
+                const cv = document.createElement('canvas');
+                cv.width = src.width; cv.height = src.height;
+                const ctx = cv.getContext('2d');
+                ctx.drawImage(src, 0, 0);
+                const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
+                let x0 = cv.width, y0 = cv.height, x1 = 0, y1 = 0;
+                for (let y = 0; y < cv.height; y++)
+                    for (let x = 0; x < cv.width; x++)
+                        if (d[(y * cv.width + x) * 4 + 3] > 10) {
+                            if (x < x0) x0 = x; if (x > x1) x1 = x;
+                            if (y < y0) y0 = y; if (y > y1) y1 = y;
+                        }
+                if (x1 > x0 && y1 > y0) {
+                    const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+                    const t = document.createElement('canvas');
+                    t.width = tw; t.height = th;
+                    t.getContext('2d').drawImage(cv, x0, y0, tw, th, 0, 0, tw, th);
+                    this.textures.addCanvas(tk, t);
+                }
+            }
+        });
+
         // 城堡圖示（用圖形繪製）
-        this.drawCastle(cx, cy - 180);
+        this.drawCastle(cx, cy - 140);
 
         // 遊戲標題（帶陰影）
-        this.add.text(cx + 2, cy - 82, '守 塔 遊 戲', {
+        this.add.text(cx + 2, cy - 42, '守 塔 遊 戲', {
             fontSize: '52px', fontFamily: 'Arial, sans-serif', color: '#000000',
             padding: { top: 6, bottom: 2 },
         }).setOrigin(0.5).setAlpha(0.4);
-        const title = this.add.text(cx, cy - 84, '守 塔 遊 戲', {
+        const title = this.add.text(cx, cy - 44, '守 塔 遊 戲', {
             fontSize: '52px', fontFamily: 'Arial, sans-serif', color: '#f0e6d0',
             fontStyle: 'bold', padding: { top: 6, bottom: 2 },
         }).setOrigin(0.5);
@@ -78,7 +105,7 @@ class BootScene extends Phaser.Scene {
         });
 
         // 副標題
-        this.add.text(cx, cy - 30, 'TOWER DEFENSE', {
+        this.add.text(cx, cy + 10, 'TOWER DEFENSE', {
             fontSize: '16px', fontFamily: 'Arial', color: '#7a7aaa',
             letterSpacing: 8,
         }).setOrigin(0.5);
@@ -86,59 +113,29 @@ class BootScene extends Phaser.Scene {
         // 分隔線
         const sep = this.add.graphics();
         sep.lineStyle(1, 0x5a5a8a, 0.5);
-        sep.lineBetween(cx - 160, cy, cx + 160, cy);
+        sep.lineBetween(cx - 160, cy + 36, cx + 160, cy + 36);
         sep.fillStyle(0x8a8abf, 0.8);
-        sep.fillCircle(cx, cy, 3);
-
-        // 遊戲說明
-        this.add.text(cx, cy + 30, '敵人會沿著路徑前進\n在路徑旁建造防禦塔來消滅他們！', {
-            fontSize: '18px', fontFamily: 'Arial', color: '#b0b0cc',
-            align: 'center', lineSpacing: 8, padding: { top: 4, bottom: 2 },
-        }).setOrigin(0.5);
-
-        // 塔的介紹卡片
-        const cardY = cy + 100;
-        const cards = [
-            { icon: '🏹', name: '箭塔', desc: '攻速快', color: '#4caf50' },
-            { icon: '💣', name: '砲塔', desc: '高傷害', color: '#ff9800' },
-            { icon: '❄️', name: '冰塔', desc: '可減速', color: '#42a5f5' },
-        ];
-        cards.forEach((card, i) => {
-            const cardX = cx - 180 + i * 180;
-            const cg = this.add.graphics();
-            cg.fillStyle(0x2a2a4a, 0.8);
-            cg.fillRoundedRect(cardX - 60, cardY - 20, 120, 50, 8);
-            cg.lineStyle(1, 0x4a4a7a, 0.6);
-            cg.strokeRoundedRect(cardX - 60, cardY - 20, 120, 50, 8);
-
-            this.add.text(cardX, cardY - 2, `${card.icon} ${card.name}`, {
-                fontSize: '16px', color: card.color, fontStyle: 'bold',
-                padding: { top: 4, bottom: 2 },
-            }).setOrigin(0.5);
-            this.add.text(cardX, cardY + 18, card.desc, {
-                fontSize: '12px', color: '#999999',
-                padding: { top: 2 },
-            }).setOrigin(0.5);
-        });
+        sep.fillCircle(cx, cy + 36, 3);
 
         // 開始按鈕（帶光暈）
+        const btnY = cy + 80;
         const btnGlow = this.add.graphics();
         btnGlow.fillStyle(0xe74c3c, 0.15);
-        btnGlow.fillRoundedRect(cx - 120, cy + 168, 240, 56, 28);
+        btnGlow.fillRoundedRect(cx - 120, btnY - 26, 240, 56, 28);
 
         const btnBg = this.add.graphics();
         btnBg.fillStyle(0xc0392b);
-        btnBg.fillRoundedRect(cx - 100, cy + 174, 200, 44, 22);
+        btnBg.fillRoundedRect(cx - 100, btnY - 20, 200, 44, 22);
         btnBg.fillStyle(0xe74c3c);
-        btnBg.fillRoundedRect(cx - 98, cy + 174, 196, 38, 20);
+        btnBg.fillRoundedRect(cx - 98, btnY - 20, 196, 38, 20);
 
-        const btnText = this.add.text(cx, cy + 192, '開 始 遊 戲', {
+        const btnText = this.add.text(cx, btnY, '開 始 遊 戲', {
             fontSize: '24px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
             padding: { top: 4, bottom: 2 },
         }).setOrigin(0.5);
 
         // 按鈕互動區域
-        const hitArea = this.add.rectangle(cx, cy + 194, 200, 44).setInteractive({ useHandCursor: true });
+        const hitArea = this.add.rectangle(cx, btnY, 200, 44).setInteractive({ useHandCursor: true });
         hitArea.setAlpha(0.001);
 
         // 按鈕呼吸動畫
