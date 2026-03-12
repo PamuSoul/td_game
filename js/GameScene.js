@@ -6,7 +6,7 @@ class GameScene extends Phaser.Scene {
     constructor() { super('GameScene'); }
 
     create() {
-        this.gold = 200;
+        this.gold = 100;
         this.lives = 20;
         this.waveNumber = 0;
         this.enemies = [];
@@ -18,6 +18,11 @@ class GameScene extends Phaser.Scene {
         this.spawnTimer = 0;
         this.enemiesAlive = 0;
         this.decoSeed = 12345;
+        // 卡片系統：起始各一張（陣列，每張卡是一個 type 字串）
+        this.cards = ['arrow', 'cannon', 'ice'];
+        this.selectedCardIndex = -1;
+        this.cardPickActive = false;
+        this.cardObjects = []; // 底部 UI 的卡片物件
 
         this.buildGrid();
         // 自動裁切所有圖片的透明區域，建立 _trimmed 紋理
@@ -52,7 +57,6 @@ class GameScene extends Phaser.Scene {
             }
         });
         this.drawGrid();
-        this.drawDecorations();
         this.drawEntryArrow();
         this.drawExitCastle();
         this.createUI();
@@ -74,17 +78,10 @@ class GameScene extends Phaser.Scene {
         for (let c = 0; c < COLS; c++) {
             this.grid[c] = [];
             for (let r = 0; r < ROWS; r++) {
-                this.grid[c][r] = this.pathTiles.has(`${c},${r}`) ? 'path' : 'empty';
+                this.grid[c][r] = this.pathTiles.has(`${c},${r}`) ? 'path' : 'buildable';
             }
         }
-        this.pathTiles.forEach(key => {
-            const [c, r] = key.split(',').map(Number);
-            for (const [dc, dr] of [[-1,0],[1,0],[0,-1],[0,1]]) {
-                const nc = c + dc, nr = r + dr;
-                if (nc >= 0 && nc < COLS && nr >= 0 && nr < ROWS && this.grid[nc][nr] === 'empty')
-                    this.grid[nc][nr] = 'buildable';
-            }
-        });
+        this.treeGraphics = {}; // 儲存樹木圖像 key: "col,row" → gameObject
     }
 
     drawGrid() {
@@ -115,7 +112,7 @@ class GameScene extends Phaser.Scene {
                         rowGfx.fillCircle(x0 + dx, y0 + dy, 1);
                     }
                 } else {
-                    // 草地和可建造格都用草地圖片
+                    // 草地（全部可建造）
                     if (hasGrassTile) {
                         this.add.image(c * TILE_W, r * TILE_H, 'tile_grass_trimmed')
                             .setOrigin(0, 0).setDepth(r * 10)
@@ -123,13 +120,6 @@ class GameScene extends Phaser.Scene {
                     } else {
                         const ci = (c * 7 + r * 13) % COLORS.grassTop.length;
                         drawBlock(rowGfx, c, r, COLORS.grassTop[ci], COLORS.grassFront[ci]);
-                    }
-                    // 可建造格加十字標記
-                    if (type === 'buildable') {
-                        const cx = c * TILE_W + TILE_W / 2, cy = r * TILE_H + TILE_H / 2;
-                        rowGfx.fillStyle(0xffffff, 0.25);
-                        rowGfx.fillRect(cx - gpx, cy - gpx/2, gpx*2, gpx);
-                        rowGfx.fillRect(cx - gpx/2, cy - gpx, gpx, gpx*2);
                     }
                 }
             }
@@ -212,30 +202,44 @@ class GameScene extends Phaser.Scene {
         g.fillTriangle(cx + 1, cy - 36, cx + 14, cy - 31, cx + 1, cy - 26);
     }
 
-    drawDecorations() {
+    growTrees(treeCount) {
+        // 每回合隨機在可建造格長樹，不會長在已有塔或已有樹的位置
         const hasTree = this.textures.exists('deco_tree_trimmed');
+        const candidates = [];
         for (let c = 0; c < COLS; c++) {
-            for (let r = 1; r < ROWS; r++) {
-                if (this.grid[c][r] !== 'empty') continue;
-                const rand = this.seededRandom();
-                const cx = c * TILE_W + TILE_W / 2;
-                const cy = r * TILE_H + TILE_H / 2;
-                const depth = r * 10 + 1;
-
-                if (rand < 0.25) {
-                    if (hasTree) {
-                        const img = this.add.image(cx, cy, 'deco_tree_trimmed').setDepth(depth);
-                        const s = (TILE_H * 1.2) / img.height;
-                        img.setScale(s).setOrigin(0.5, 0.8);
-                    } else {
-                        const gfx = this.add.graphics().setDepth(depth);
-                        drawPixelSprite(gfx, cx, cy - 4, SPR_TREE, PAL_TREE, 3);
-                    }
-                } else if (rand < 0.30) {
-                    const gfx = this.add.graphics().setDepth(depth);
-                    drawPixelSprite(gfx, cx, cy + 4, SPR_ROCK, PAL_ROCK, 3);
-                }
+            for (let r = 0; r < ROWS; r++) {
+                if (this.grid[c][r] === 'buildable') candidates.push({ c, r });
             }
+        }
+        const count = treeCount || (2 + Math.floor(Math.random() * 4));
+        for (let i = 0; i < count && candidates.length > 0; i++) {
+            const idx = Math.floor(Math.random() * candidates.length);
+            const { c, r } = candidates.splice(idx, 1)[0];
+            this.grid[c][r] = 'tree';
+
+            const cx = c * TILE_W + TILE_W / 2;
+            const cy = r * TILE_H + TILE_H / 2;
+            const depth = r * 10 + 1;
+
+            let treeObj;
+            if (hasTree) {
+                treeObj = this.add.image(cx, cy, 'deco_tree_trimmed').setDepth(depth);
+                const s = (TILE_H * 1.2) / treeObj.height;
+                treeObj.setScale(0).setOrigin(0.5, 0.8);
+                this.tweens.add({
+                    targets: treeObj, scaleX: s, scaleY: s,
+                    duration: 400, ease: 'Back.easeOut',
+                });
+            } else {
+                treeObj = this.add.graphics().setDepth(depth);
+                drawPixelSprite(treeObj, cx, cy - 4, SPR_TREE, PAL_TREE, 3);
+                treeObj.setScale(0);
+                this.tweens.add({
+                    targets: treeObj, scaleX: 1, scaleY: 1,
+                    duration: 400, ease: 'Back.easeOut',
+                });
+            }
+            this.treeGraphics[`${c},${r}`] = treeObj;
         }
     }
 
@@ -278,33 +282,7 @@ class GameScene extends Phaser.Scene {
             padding: { top: 2 },
         }).setDepth(201);
 
-        this.towerButtons = [];
-        const types = ['arrow', 'cannon', 'ice'];
-        const icons = ['🏹', '💣', '❄️'];
-        let bx = 230;
-
-        types.forEach((type, i) => {
-            const cfg = TOWER_TYPES[type];
-            const btnBg = this.add.graphics().setDepth(200);
-            const btn = this.add.text(bx + 60, uiY + 26, `${icons[i]} ${cfg.name}`, {
-                fontSize: '16px', color: '#e0e0e0', fontStyle: 'bold',
-                padding: { top: 4, bottom: 2 },
-            }).setOrigin(0.5).setDepth(201);
-            const costText = this.add.text(bx + 60, uiY + 50, `$ ${cfg.cost}`, {
-                fontSize: '13px', color: '#aaaaaa',
-                padding: { top: 2 },
-            }).setOrigin(0.5).setDepth(201);
-
-            const hitArea = this.add.rectangle(bx + 60, uiY + 40, 120, 68)
-                .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(202);
-            hitArea.on('pointerdown', (pointer) => {
-                pointer.event.stopPropagation();
-                this.selectTower(type);
-            });
-
-            this.towerButtons.push({ hitArea, btn, costText, type, bg: btnBg });
-            bx += 132;
-        });
+        this.renderCards();
 
         this.nextWaveBg = this.add.graphics().setDepth(200);
         this.drawNextWaveBtn(0xc62828, 0xe53935);
@@ -317,9 +295,15 @@ class GameScene extends Phaser.Scene {
             .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(202);
         this.nextWaveHit.on('pointerdown', (pointer) => {
             pointer.event.stopPropagation();
-            if (!this.waveActive && this.waveNumber === 0) this.startWave();
+            if (this.cardPickActive || this.shopActive) return;
+            if (this.waveNumber === 0) {
+                this.startWave();
+            } else {
+                this.showShop();
+            }
         });
         this.nextWaveCountdown = null;
+        this.shopActive = false;
 
         this.msgText = this.add.text(GAME_WIDTH / 2, PLAYFIELD_H - 30, '', {
             fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
@@ -338,40 +322,412 @@ class GameScene extends Phaser.Scene {
         this.nextWaveBg.fillRoundedRect(GAME_WIDTH - 164, uiY + 10, 138, 54, 7);
     }
 
+    // ── 卡片選擇 UI ──
+
+    showCardPick() {
+        this.cardPickActive = true;
+        const allTypes = ['arrow', 'cannon', 'ice'];
+        const shuffled = allTypes.sort(() => Math.random() - 0.5);
+        const choices = [shuffled[0], shuffled[1]];
+        const imgKeys = { arrow: 'tower_arrow_trimmed', cannon: 'tower_cannon_trimmed', ice: 'tower_ice_trimmed' };
+
+        // 半透明遮罩
+        const overlay = this.add.graphics().setDepth(1000);
+        overlay.fillStyle(0x000000, 0.6);
+        overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+        const centerX = GAME_WIDTH / 2;
+        const centerY = PLAYFIELD_H / 2;
+
+        const title = this.add.text(centerX, centerY - 120, '選擇一張卡片', {
+            fontSize: '28px', color: '#ffd54f', fontStyle: 'bold',
+            stroke: '#000000', strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(1001);
+
+        const cardElements = [];
+        cardElements.push(overlay, title);
+
+        const PICK_W = 120, PICK_H = 160;
+
+        choices.forEach((type, i) => {
+            const cfg = TOWER_TYPES[type];
+            const cx = centerX + (i === 0 ? -80 : 80);
+            const cy = centerY + 10;
+
+            // 卡片背景
+            const cardBg = this.add.graphics().setDepth(1001);
+            cardBg.fillStyle(0x2a2a4a, 0.95);
+            cardBg.fillRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
+            cardBg.lineStyle(2, cfg.colorLight, 0.8);
+            cardBg.strokeRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
+
+            // 塔圖像
+            const imgKey = imgKeys[type];
+            if (imgKey && this.textures.exists(imgKey)) {
+                const img = this.add.image(cx, cy, imgKey).setDepth(1002);
+                const s = (PICK_H - 24) / img.height;
+                img.setScale(s);
+                cardElements.push(img);
+            }
+
+            // 點擊區域
+            const hitArea = this.add.rectangle(cx, cy, PICK_W, PICK_H)
+                .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(1003);
+
+            hitArea.on('pointerover', () => {
+                cardBg.clear();
+                cardBg.fillStyle(0x1b5e20, 0.95);
+                cardBg.fillRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
+                cardBg.lineStyle(3, 0x4caf50, 1);
+                cardBg.strokeRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
+            });
+            hitArea.on('pointerout', () => {
+                cardBg.clear();
+                cardBg.fillStyle(0x2a2a4a, 0.95);
+                cardBg.fillRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
+                cardBg.lineStyle(2, cfg.colorLight, 0.8);
+                cardBg.strokeRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
+            });
+
+            hitArea.on('pointerdown', (pointer) => {
+                pointer.event.stopPropagation();
+                this.cards.push(type);
+                this.cardPickActive = false;
+                cardElements.forEach(el => el.destroy());
+                this.nextWaveCountdown = 5000;
+                this.updateUI();
+                this.renderCards();
+            });
+
+            cardElements.push(cardBg, hitArea);
+        });
+    }
+
+    // ── 商店 UI ──
+
+    showShop() {
+        this.shopActive = true;
+        const shopElements = [];
+
+        // 遮罩
+        const overlay = this.add.graphics().setDepth(1000);
+        overlay.fillStyle(0x000000, 0.6);
+        overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        shopElements.push(overlay);
+
+        const centerX = GAME_WIDTH / 2;
+        const centerY = PLAYFIELD_H / 2;
+
+        const title = this.add.text(centerX, centerY - 140, '商店', {
+            fontSize: '30px', color: '#ffd54f', fontStyle: 'bold',
+            stroke: '#000000', strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(1001);
+        shopElements.push(title);
+
+        // 金幣顯示
+        const goldLabel = this.add.text(centerX, centerY - 105, `💰 ${this.gold}`, {
+            fontSize: '18px', color: '#ffd54f', fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(1001);
+        shopElements.push(goldLabel);
+
+        const closeShop = () => {
+            this.shopActive = false;
+            shopElements.forEach(el => el.destroy());
+        };
+
+        // ── 購買卡片按鈕 ──
+        const buyBtnY = centerY - 40;
+        const buyBg = this.add.graphics().setDepth(1001);
+        buyBg.fillStyle(0x2a2a4a, 0.95);
+        buyBg.fillRoundedRect(centerX - 140, buyBtnY - 30, 280, 60, 10);
+        buyBg.lineStyle(2, 0x4caf50, 0.8);
+        buyBg.strokeRoundedRect(centerX - 140, buyBtnY - 30, 280, 60, 10);
+        shopElements.push(buyBg);
+
+        const buyText = this.add.text(centerX, buyBtnY, '購買卡片', {
+            fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(1002);
+        shopElements.push(buyText);
+
+        const buyHit = this.add.rectangle(centerX, buyBtnY, 280, 60)
+            .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(1003);
+        buyHit.on('pointerover', () => {
+            buyBg.clear();
+            buyBg.fillStyle(0x1b5e20, 0.95);
+            buyBg.fillRoundedRect(centerX - 140, buyBtnY - 30, 280, 60, 10);
+            buyBg.lineStyle(2, 0x4caf50, 1);
+            buyBg.strokeRoundedRect(centerX - 140, buyBtnY - 30, 280, 60, 10);
+        });
+        buyHit.on('pointerout', () => {
+            buyBg.clear();
+            buyBg.fillStyle(0x2a2a4a, 0.95);
+            buyBg.fillRoundedRect(centerX - 140, buyBtnY - 30, 280, 60, 10);
+            buyBg.lineStyle(2, 0x4caf50, 0.8);
+            buyBg.strokeRoundedRect(centerX - 140, buyBtnY - 30, 280, 60, 10);
+        });
+        buyHit.on('pointerdown', (pointer) => {
+            pointer.event.stopPropagation();
+            closeShop();
+            this.showBuyCards();
+        });
+        shopElements.push(buyHit);
+
+        // ── 抽取卡包按鈕 ──
+        const drawBtnY = centerY + 40;
+        const drawBg = this.add.graphics().setDepth(1001);
+        drawBg.fillStyle(0x2a2a4a, 0.95);
+        drawBg.fillRoundedRect(centerX - 140, drawBtnY - 30, 280, 60, 10);
+        drawBg.lineStyle(2, 0xffa726, 0.8);
+        drawBg.strokeRoundedRect(centerX - 140, drawBtnY - 30, 280, 60, 10);
+        shopElements.push(drawBg);
+
+        const packCost = 80;
+        const drawText = this.add.text(centerX, drawBtnY, `抽取卡包  💰${packCost}`, {
+            fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(1002);
+        shopElements.push(drawText);
+
+        const drawHit = this.add.rectangle(centerX, drawBtnY, 280, 60)
+            .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(1003);
+        drawHit.on('pointerover', () => {
+            drawBg.clear();
+            drawBg.fillStyle(0x4e342e, 0.95);
+            drawBg.fillRoundedRect(centerX - 140, drawBtnY - 30, 280, 60, 10);
+            drawBg.lineStyle(2, 0xffa726, 1);
+            drawBg.strokeRoundedRect(centerX - 140, drawBtnY - 30, 280, 60, 10);
+        });
+        drawHit.on('pointerout', () => {
+            drawBg.clear();
+            drawBg.fillStyle(0x2a2a4a, 0.95);
+            drawBg.fillRoundedRect(centerX - 140, drawBtnY - 30, 280, 60, 10);
+            drawBg.lineStyle(2, 0xffa726, 0.8);
+            drawBg.strokeRoundedRect(centerX - 140, drawBtnY - 30, 280, 60, 10);
+        });
+        drawHit.on('pointerdown', (pointer) => {
+            pointer.event.stopPropagation();
+            if (this.gold < packCost) {
+                this.showMessage('金幣不足！', 800);
+                return;
+            }
+            this.gold -= packCost;
+            const allTypes = ['arrow', 'cannon', 'ice'];
+            const count = 1 + Math.floor(Math.random() * 5);
+            for (let i = 0; i < count; i++) {
+                this.cards.push(allTypes[Math.floor(Math.random() * 3)]);
+            }
+            closeShop();
+            this.showMessage(`抽到 ${count} 張卡片！`, 1500);
+            this.updateUI();
+            this.renderCards();
+        });
+        shopElements.push(drawHit);
+
+        // ── 關閉按鈕 ──
+        const closeBtnY = centerY + 110;
+        const closeBg = this.add.graphics().setDepth(1001);
+        closeBg.fillStyle(0x424242, 0.9);
+        closeBg.fillRoundedRect(centerX - 60, closeBtnY - 20, 120, 40, 8);
+        shopElements.push(closeBg);
+
+        const closeText = this.add.text(centerX, closeBtnY, '關閉', {
+            fontSize: '18px', color: '#cccccc', fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(1002);
+        shopElements.push(closeText);
+
+        const closeHit = this.add.rectangle(centerX, closeBtnY, 120, 40)
+            .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(1003);
+        closeHit.on('pointerdown', (pointer) => {
+            pointer.event.stopPropagation();
+            closeShop();
+        });
+        shopElements.push(closeHit);
+    }
+
+    showBuyCards() {
+        this.shopActive = true;
+        const buyElements = [];
+
+        const overlay = this.add.graphics().setDepth(1000);
+        overlay.fillStyle(0x000000, 0.6);
+        overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        buyElements.push(overlay);
+
+        const centerX = GAME_WIDTH / 2;
+        const centerY = PLAYFIELD_H / 2;
+
+        const title = this.add.text(centerX, centerY - 130, '購買卡片', {
+            fontSize: '28px', color: '#ffd54f', fontStyle: 'bold',
+            stroke: '#000000', strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(1001);
+        buyElements.push(title);
+
+        const goldLabel = this.add.text(centerX, centerY - 95, `💰 ${this.gold}`, {
+            fontSize: '18px', color: '#ffd54f', fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(1001);
+        buyElements.push(goldLabel);
+
+        const closeBuy = () => {
+            this.shopActive = false;
+            buyElements.forEach(el => el.destroy());
+            this.updateUI();
+            this.renderCards();
+        };
+
+        const types = ['arrow', 'cannon', 'ice'];
+        const imgKeys = { arrow: 'tower_arrow_trimmed', cannon: 'tower_cannon_trimmed', ice: 'tower_ice_trimmed' };
+        const CARD_W = 120, CARD_H = 160;
+
+        types.forEach((type, i) => {
+            const cfg = TOWER_TYPES[type];
+            const cx = centerX + (i - 1) * 140;
+            const cy = centerY + 20;
+
+            const cardBg = this.add.graphics().setDepth(1001);
+            const canBuy = this.gold >= cfg.cost;
+            cardBg.fillStyle(canBuy ? 0x2a2a4a : 0x1a1a2e, 0.95);
+            cardBg.fillRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 10);
+            cardBg.lineStyle(2, canBuy ? cfg.colorLight : 0x444444, 0.8);
+            cardBg.strokeRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 10);
+            buyElements.push(cardBg);
+
+            // 塔圖像
+            const imgKey = imgKeys[type];
+            if (imgKey && this.textures.exists(imgKey)) {
+                const img = this.add.image(cx, cy - 15, imgKey).setDepth(1002);
+                const s = (CARD_H - 60) / img.height;
+                img.setScale(s);
+                if (!canBuy) img.setAlpha(0.4);
+                buyElements.push(img);
+            }
+
+            // 價格
+            const priceText = this.add.text(cx, cy + CARD_H / 2 - 25, `💰 ${cfg.cost}`, {
+                fontSize: '16px', color: canBuy ? '#ffd54f' : '#666666', fontStyle: 'bold',
+            }).setOrigin(0.5).setDepth(1002);
+            buyElements.push(priceText);
+
+            // 點擊
+            const hitArea = this.add.rectangle(cx, cy, CARD_W, CARD_H)
+                .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(1003);
+            hitArea.on('pointerover', () => {
+                if (this.gold >= cfg.cost) {
+                    cardBg.clear();
+                    cardBg.fillStyle(0x1b5e20, 0.95);
+                    cardBg.fillRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 10);
+                    cardBg.lineStyle(3, 0x4caf50, 1);
+                    cardBg.strokeRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 10);
+                }
+            });
+            hitArea.on('pointerout', () => {
+                const cb = this.gold >= cfg.cost;
+                cardBg.clear();
+                cardBg.fillStyle(cb ? 0x2a2a4a : 0x1a1a2e, 0.95);
+                cardBg.fillRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 10);
+                cardBg.lineStyle(2, cb ? cfg.colorLight : 0x444444, 0.8);
+                cardBg.strokeRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 10);
+            });
+            hitArea.on('pointerdown', (pointer) => {
+                pointer.event.stopPropagation();
+                if (this.gold < cfg.cost) {
+                    this.showMessage('金幣不足！', 800);
+                    return;
+                }
+                this.gold -= cfg.cost;
+                this.cards.push(type);
+                closeBuy();
+                this.showMessage(`購買了 ${cfg.name}！`, 1000);
+            });
+            buyElements.push(hitArea);
+        });
+
+        // 返回按鈕
+        const backY = centerY + CARD_H / 2 + 40;
+        const backBg = this.add.graphics().setDepth(1001);
+        backBg.fillStyle(0x424242, 0.9);
+        backBg.fillRoundedRect(centerX - 60, backY - 20, 120, 40, 8);
+        buyElements.push(backBg);
+
+        const backText = this.add.text(centerX, backY, '返回', {
+            fontSize: '18px', color: '#cccccc', fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(1002);
+        buyElements.push(backText);
+
+        const backHit = this.add.rectangle(centerX, backY, 120, 40)
+            .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(1003);
+        backHit.on('pointerdown', (pointer) => {
+            pointer.event.stopPropagation();
+            closeBuy();
+            this.showShop();
+        });
+        buyElements.push(backHit);
+    }
+
     showMessage(text, duration = 1500) {
         this.msgText.setText(text).setAlpha(1);
         this.tweens.add({ targets: this.msgText, alpha: 0, duration: 400, delay: duration - 400 });
     }
 
-    selectTower(type) {
-        this.selectedTowerType = (this.selectedTowerType === type) ? null : type;
-        this.updateTowerButtons();
+    selectCard(index) {
+        if (this.selectedCardIndex === index) {
+            this.selectedCardIndex = -1;
+            this.selectedTowerType = null;
+        } else {
+            this.selectedCardIndex = index;
+            this.selectedTowerType = this.cards[index];
+        }
+        this.renderCards();
     }
 
-    updateTowerButtons() {
-        this.towerButtons.forEach(({ bg, type, btn, costText }) => {
+    renderCards() {
+        // 清除舊卡片
+        this.cardObjects.forEach(obj => obj.destroy());
+        this.cardObjects = [];
+
+        const CARD_W = 48, CARD_H = 66, GAP = 6;
+        const uiY = PLAYFIELD_H;
+        const startX = 220;
+        const cardY = uiY + UI_HEIGHT / 2;
+        const imgKeys = { arrow: 'tower_arrow_trimmed', cannon: 'tower_cannon_trimmed', ice: 'tower_ice_trimmed' };
+
+        this.cards.forEach((type, i) => {
+            const cx = startX + i * (CARD_W + GAP) + CARD_W / 2;
+            const cy = cardY;
+            const selected = (i === this.selectedCardIndex);
             const cfg = TOWER_TYPES[type];
-            bg.clear();
-            if (type === this.selectedTowerType) {
-                bg.fillStyle(0x1b5e20, 0.9);
-                bg.fillRoundedRect(btn.x - 60, PLAYFIELD_H + 4, 120, 70, 6);
-                bg.lineStyle(2, 0x4caf50, 0.8);
-                bg.strokeRoundedRect(btn.x - 60, PLAYFIELD_H + 4, 120, 70, 6);
-                btn.setColor('#ffffff');
-                costText.setColor('#a5d6a7');
-            } else if (this.gold < cfg.cost) {
-                bg.fillStyle(0x1a1a2e, 0.6);
-                bg.fillRoundedRect(btn.x - 60, PLAYFIELD_H + 6, 120, 68, 6);
-                btn.setColor('#666666');
-                costText.setColor('#664444');
+
+            // 卡片背景
+            const bg = this.add.graphics().setDepth(200);
+            if (selected) {
+                bg.fillStyle(0x1b5e20, 0.95);
+                bg.fillRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2 - 2, CARD_W, CARD_H, 6);
+                bg.lineStyle(2, 0x4caf50, 1);
+                bg.strokeRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2 - 2, CARD_W, CARD_H, 6);
             } else {
                 bg.fillStyle(0x2a2a4a, 0.9);
-                bg.fillRoundedRect(btn.x - 60, PLAYFIELD_H + 6, 120, 68, 6);
-                bg.lineStyle(1, 0x4a4a6a, 0.5);
-                bg.strokeRoundedRect(btn.x - 60, PLAYFIELD_H + 6, 120, 68, 6);
-                btn.setColor('#e0e0e0');
-                costText.setColor('#aaaaaa');
+                bg.fillRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 6);
+                bg.lineStyle(1, cfg.colorLight, 0.5);
+                bg.strokeRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 6);
             }
+            this.cardObjects.push(bg);
+
+            // 塔圖像
+            const imgKey = imgKeys[type];
+            if (imgKey && this.textures.exists(imgKey)) {
+                const img = this.add.image(cx, cy - 2, imgKey).setDepth(201);
+                const s = (CARD_H - 14) / img.height;
+                img.setScale(s);
+                this.cardObjects.push(img);
+            }
+
+            // 點擊區域
+            const hitArea = this.add.rectangle(cx, cy, CARD_W, CARD_H)
+                .setInteractive({ useHandCursor: true }).setAlpha(0.001).setDepth(202);
+            const idx = i;
+            hitArea.on('pointerdown', (pointer) => {
+                pointer.event.stopPropagation();
+                this.selectCard(idx);
+            });
+            this.cardObjects.push(hitArea);
         });
     }
 
@@ -381,35 +737,29 @@ class GameScene extends Phaser.Scene {
         this.waveText.setText(`波數 ${this.waveNumber} / ${MAX_WAVES}`);
 
         if (this.waveNumber === 0) {
-            // 還沒開始，顯示遊戲開始按鈕
+            // 遊戲開始按鈕
             this.nextWaveBg.setVisible(true);
             this.nextWaveText.setVisible(true);
             this.nextWaveHit.setVisible(true);
             this.drawNextWaveBtn(0xc62828, 0xe53935);
             this.nextWaveText.setText('遊戲開始');
             this.nextWaveText.setColor('#ffffff');
-        } else if (this.nextWaveCountdown !== null) {
-            // 倒數中，顯示倒數秒數
+        } else {
+            // 遊戲開始後，商店按鈕常駐（戰鬥中也能用）
             this.nextWaveBg.setVisible(true);
             this.nextWaveText.setVisible(true);
-            this.nextWaveHit.setVisible(false);
-            this.drawNextWaveBtn(0x424242, 0x616161);
-            const sec = Math.ceil(this.nextWaveCountdown / 1000);
-            this.nextWaveText.setText(`${sec} 秒`);
-            this.nextWaveText.setColor('#ffab40');
-        } else {
-            // 波次進行中或等待中，隱藏按鈕
-            this.nextWaveBg.setVisible(false);
-            this.nextWaveText.setVisible(false);
-            this.nextWaveHit.setVisible(false);
+            this.nextWaveHit.setVisible(true);
+            this.drawNextWaveBtn(0x1565c0, 0x1e88e5);
+            this.nextWaveText.setText('商店');
+            this.nextWaveText.setColor('#ffffff');
         }
-        this.updateTowerButtons();
     }
 
     // ── 輸入 ──
 
     setupInput() {
         this.input.on('pointerdown', (pointer) => {
+            if (this.cardPickActive || this.shopActive) return;
             if (pointer.y >= PLAYFIELD_H) return;
             const { col, row } = screenToGrid(pointer.x, pointer.y);
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
@@ -435,7 +785,7 @@ class GameScene extends Phaser.Scene {
             const valid = this.grid[col][row] === 'buildable';
             const cfg = TOWER_TYPES[this.selectedTowerType];
             const center = gridCenterToScreen(col, row);
-            const canAfford = this.gold >= cfg.cost;
+            const canAfford = this.selectedCardIndex >= 0;
 
             if (valid) {
                 const color = canAfford ? 0x4caf50 : 0xef5350;
@@ -452,7 +802,8 @@ class GameScene extends Phaser.Scene {
                         if (this.previewImg) this.previewImg.destroy();
                         this.previewImg = this.add.image(0, 0, imgKey).setDepth(901);
                     }
-                    const s = (TILE_H * 2) / this.previewImg.height * 0.7;
+                    let s = (TILE_H * 2) / this.previewImg.height * 0.7;
+                    if (this.selectedTowerType === 'cannon') s *= 0.85;
                     this.previewImg.setPosition(center.x, center.y);
                     this.previewImg.setScale(s);
                     this.previewImg.setOrigin(0.5, 0.85);
@@ -476,15 +827,16 @@ class GameScene extends Phaser.Scene {
             this.showMessage('無法在此建造！', 800);
             return;
         }
-        const cfg = TOWER_TYPES[type];
-        if (this.gold < cfg.cost) {
-            this.showMessage('金幣不足！', 800);
+        if (this.selectedCardIndex < 0 || this.selectedCardIndex >= this.cards.length) {
             return;
         }
 
-        this.gold -= cfg.cost;
+        this.cards.splice(this.selectedCardIndex, 1);
+        this.selectedCardIndex = -1;
+        this.selectedTowerType = null;
         this.grid[col][row] = 'tower';
 
+        const cfg = TOWER_TYPES[type];
         const logicalPos = gridToPixel(col, row);
         const screenPos = gridCenterToScreen(col, row);
         const towerDepth = row * 10 + 5;
@@ -501,8 +853,9 @@ class GameScene extends Phaser.Scene {
         // 塔圖像：有圖片用圖片，否則用像素圖
         const imgKeys = { arrow: 'tower_arrow_trimmed', cannon: 'tower_cannon_trimmed', ice: 'tower_ice_trimmed' };
         let towerObj;
-        const baseScale = this.textures.exists(imgKeys[type])
+        let baseScale = this.textures.exists(imgKeys[type])
             ? (TILE_H * 2) / this.textures.get(imgKeys[type]).getSourceImage().height : 1;
+        if (type === 'cannon') baseScale *= 0.85; // 砲塔原圖較大，縮小一些
         const levelScales = [0.7, 0.85, 1.0]; // 三階段大小
         const finalScale = baseScale * levelScales[0];
 
@@ -523,6 +876,7 @@ class GameScene extends Phaser.Scene {
         tower.baseScale = baseScale;
         this.towers.push(tower);
         this.updateUI();
+        this.renderCards();
 
         towerObj.setScale(finalScale * 0.3).setAlpha(0.5);
         this.tweens.add({
@@ -531,19 +885,20 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    getUpgradeCost(tower) {
-        // 升級費用：基礎費用 * 等級
-        return TOWER_TYPES[tower.type].cost * tower.level;
-    }
-
     upgradeTower(tower) {
         if (tower.level >= 3) return;
-        const cost = this.getUpgradeCost(tower);
-        if (this.gold < cost) {
-            this.showMessage('金幣不足！', 800);
+        // 必須選擇與塔相同類型的卡片才能升級
+        if (this.selectedCardIndex < 0 || this.selectedCardIndex >= this.cards.length) {
+            this.showMessage('請先選擇卡片！', 800);
             return;
         }
-        this.gold -= cost;
+        if (this.cards[this.selectedCardIndex] !== tower.type) {
+            this.showMessage('卡片類型不符！', 800);
+            return;
+        }
+        this.cards.splice(this.selectedCardIndex, 1);
+        this.selectedCardIndex = -1;
+        this.selectedTowerType = null;
         tower.level++;
         // 提升攻擊力（每級 +50%）
         const cfg = TOWER_TYPES[tower.type];
@@ -562,6 +917,7 @@ class GameScene extends Phaser.Scene {
 
         this.showMessage(`升級到 Lv${tower.level}！`, 1000);
         this.updateUI();
+        this.renderCards();
     }
 
     // ── 波次 ──
@@ -570,6 +926,7 @@ class GameScene extends Phaser.Scene {
         if (this.waveActive) return;
         this.waveNumber++;
         this.waveActive = true;
+        this.growTrees(this.waveNumber === 1 ? 15 + Math.floor(Math.random() * 6) : undefined);
         this.updateUI();
 
         const isBossWave = this.waveNumber % 5 === 0;
@@ -749,26 +1106,17 @@ class GameScene extends Phaser.Scene {
             });
         }
 
+        // 金幣飛向左下角
         const popup = this.add.text(ex, ey - 10, `+${enemy.reward}`, {
             fontSize: '16px', color: '#ffd54f', fontStyle: 'bold',
             stroke: '#5d4037', strokeThickness: 2,
         }).setOrigin(0.5).setDepth(500);
-
         this.tweens.add({
             targets: popup,
             x: this.goldIconX + 30, y: this.goldIconY,
             alpha: 0.3, scaleX: 0.6, scaleY: 0.6,
             duration: 700, ease: 'Cubic.easeIn',
-            onComplete: () => {
-                popup.destroy();
-                const flash = this.add.graphics().setDepth(300);
-                flash.fillStyle(0xffd54f, 0.5);
-                flash.fillCircle(this.goldIconX + 10, this.goldIconY + 10, 12);
-                this.tweens.add({
-                    targets: flash, alpha: 0, scaleX: 2, scaleY: 2,
-                    duration: 200, onComplete: () => flash.destroy(),
-                });
-            },
+            onComplete: () => popup.destroy(),
         });
 
         enemy.container.destroy();
@@ -897,17 +1245,18 @@ class GameScene extends Phaser.Scene {
                     this.scene.start('GameOverScene', { won: true, wave: this.waveNumber });
                 });
             } else {
-                // 隨機 15 秒後自動出下一波
-                this.nextWaveCountdown = 15000;
+                // 波次完成，顯示卡片選擇，選完後 5 秒自動出波
                 this.showMessage(`第 ${this.waveNumber} 波完成！`, 2000);
+                this.time.delayedCall(800, () => {
+                    this.showCardPick();
+                });
                 this.updateUI();
             }
         }
 
-        // 倒數計時自動出波
+        // 倒數計時自動出波（不顯示倒數）
         if (this.nextWaveCountdown !== null) {
             this.nextWaveCountdown -= delta;
-            this.updateUI();
             if (this.nextWaveCountdown <= 0) {
                 this.nextWaveCountdown = null;
                 this.startWave();
