@@ -4,18 +4,18 @@
 
 /** 格子寬度 */
 const TILE_W = 64;
-/** 格子高度（矮於寬，營造 2.5D 俯視感） */
-const TILE_H = 48;
+/** 格子高度（正方形） */
+const TILE_H = 64;
 
-/** 前牆高度（最底排可見的深度） */
-const FRONT_H = 12;
+/** 前牆高度 */
+const FRONT_H = 0;
 
 const COLS = 15;
-const ROWS = 12;
+const ROWS = 9;
 const UI_HEIGHT = 80;
 
 const GAME_WIDTH = COLS * TILE_W;
-/** 地圖高度（含最底排前牆） */
+/** 地圖高度 */
 const PLAYFIELD_H = ROWS * TILE_H + FRONT_H;
 const GAME_HEIGHT = PLAYFIELD_H + UI_HEIGHT;
 
@@ -29,8 +29,8 @@ const PATH_WAYPOINTS = [
     { col: 7,  row: 5 },
     { col: 7,  row: 1 },
     { col: 11, row: 1 },
-    { col: 11, row: 10 },
-    { col: 14, row: 10 },
+    { col: 11, row: 7 },
+    { col: 14, row: 7 },
 ];
 
 // ── 防禦塔類型 ──

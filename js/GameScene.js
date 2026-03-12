@@ -217,8 +217,10 @@ class GameScene extends Phaser.Scene {
             const { c, r } = candidates.splice(idx, 1)[0];
             this.grid[c][r] = 'tree';
 
-            const cx = c * TILE_W + TILE_W / 2;
-            const cy = r * TILE_H + TILE_H / 2;
+            const offsetX = (Math.random() - 0.5) * (TILE_W * 0.6);
+            const offsetY = (Math.random() - 0.5) * (TILE_H * 0.6);
+            const cx = c * TILE_W + TILE_W / 2 + offsetX;
+            const cy = r * TILE_H + TILE_H / 2 + offsetY;
             const depth = r * 10 + 1;
 
             let treeObj;
@@ -804,9 +806,10 @@ class GameScene extends Phaser.Scene {
                     }
                     let s = (TILE_H * 2) / this.previewImg.height * 0.7;
                     if (this.selectedTowerType === 'cannon') s *= 0.85;
-                    this.previewImg.setPosition(center.x, center.y);
+                    const previewBottomY = (row + 1) * TILE_H;
+                    this.previewImg.setPosition(center.x, previewBottomY);
                     this.previewImg.setScale(s);
-                    this.previewImg.setOrigin(0.5, 0.85);
+                    this.previewImg.setOrigin(0.5, 1.0);
                     this.previewImg.setAlpha(canAfford ? 0.6 : 0.3);
                     this.previewImg.setVisible(true);
                 } else {
@@ -859,10 +862,11 @@ class GameScene extends Phaser.Scene {
         const levelScales = [0.7, 0.85, 1.0]; // 三階段大小
         const finalScale = baseScale * levelScales[0];
 
+        const towerBottomY = (row + 1) * TILE_H; // 格子底邊
         if (imgKeys[type] && this.textures.exists(imgKeys[type])) {
-            const img = this.add.image(screenPos.x, screenPos.y, imgKeys[type]).setDepth(towerDepth);
+            const img = this.add.image(screenPos.x, towerBottomY, imgKeys[type]).setDepth(towerDepth);
             img.setScale(finalScale);
-            img.setOrigin(0.5, 0.85);
+            img.setOrigin(0.5, 1.0);
             towerObj = img;
         } else {
             const gfx = this.add.graphics().setDepth(towerDepth);
@@ -1077,34 +1081,6 @@ class GameScene extends Phaser.Scene {
         this.updateUI();
 
         const ex = enemy.x, ey = enemy.y;
-
-        const colors = enemy.isBoss
-            ? [0xff4081, 0xff80ab, 0xffffff]
-            : [0xffeb3b, 0xff9800, 0xffffff];
-        colors.forEach((color, i) => {
-            const fx = this.add.graphics().setDepth(500);
-            fx.fillStyle(color, 0.6 - i * 0.15);
-            fx.fillCircle(ex, ey, 10 + i * 5);
-            this.tweens.add({
-                targets: fx, alpha: 0, scaleX: 2.5, scaleY: 2.5,
-                duration: 350 + i * 100, onComplete: () => fx.destroy(),
-            });
-        });
-
-        for (let i = 0; i < 5; i++) {
-            const angle = (i / 5) * Math.PI * 2;
-            const particle = this.add.graphics().setDepth(500);
-            particle.fillStyle(enemy.isBoss ? 0xff4081 : 0xef5350, 0.8);
-            particle.fillCircle(0, 0, 1.5 + Math.random() * 1.5);
-            particle.setPosition(ex, ey);
-            this.tweens.add({
-                targets: particle,
-                x: ex + Math.cos(angle) * (25 + Math.random() * 15),
-                y: ey + Math.sin(angle) * (20 + Math.random() * 10),
-                alpha: 0, duration: 350,
-                onComplete: () => particle.destroy(),
-            });
-        }
 
         // 金幣飛向左下角
         const popup = this.add.text(ex, ey - 10, `+${enemy.reward}`, {
