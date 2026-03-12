@@ -23,6 +23,9 @@ class GameScene extends Phaser.Scene {
         this.selectedCardIndex = -1;
         this.cardPickActive = false;
         this.cardObjects = []; // 底部 UI 的卡片物件
+        this.selectedMapTower = null; // 地圖上選中的塔
+        this.towerHighlight = null;   // 高亮圖形
+        this.towerTooltip = [];       // 懸浮框元素
 
         this.buildGrid();
         // 自動裁切所有圖片的透明區域，建立 _trimmed 紋理
@@ -766,12 +769,22 @@ class GameScene extends Phaser.Scene {
             const { col, row } = screenToGrid(pointer.x, pointer.y);
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
 
-            // 點擊已有的塔 → 升級
+            // 點擊已有的塔
             if (this.grid[col][row] === 'tower') {
                 const tower = this.towers.find(t => t.col === col && t.row === row);
-                if (tower) this.upgradeTower(tower);
+                if (tower) {
+                    // 有選卡片 → 嘗試升級
+                    if (this.selectedCardIndex >= 0) {
+                        this.upgradeTower(tower);
+                    }
+                    // 選取此塔顯示資訊
+                    this.selectMapTower(tower);
+                }
                 return;
             }
+
+            // 點擊空地 → 取消選取
+            this.clearMapTowerSelection();
 
             if (!this.selectedTowerType) return;
             this.placeTower(col, row, this.selectedTowerType);
@@ -821,6 +834,67 @@ class GameScene extends Phaser.Scene {
                 }
             }
         });
+    }
+
+    // ── 塔選取與資訊 ──
+
+    selectMapTower(tower) {
+        this.clearMapTowerSelection();
+        this.selectedMapTower = tower;
+
+        // 高亮底框
+        const gfx = this.add.graphics().setDepth(899);
+        gfx.lineStyle(2, 0xffd54f, 0.9);
+        gfx.strokeRect(tower.col * TILE_W + 2, tower.row * TILE_H + 2, TILE_W - 4, TILE_H - 4);
+        gfx.lineStyle(1, 0xffd54f, 0.3);
+        gfx.strokeCircle(tower.sx, tower.sy, tower.range);
+        gfx.fillStyle(0xffd54f, 0.05);
+        gfx.fillCircle(tower.sx, tower.sy, tower.range);
+        this.towerHighlight = gfx;
+
+        // 懸浮框
+        const cfg = TOWER_TYPES[tower.type];
+        const panelW = 140, panelH = 110;
+        // 面板位置：塔右側，超出邊界就放左側
+        let px = (tower.col + 1) * TILE_W + 8;
+        if (px + panelW > GAME_WIDTH) px = tower.col * TILE_W - panelW - 8;
+        let py = tower.row * TILE_H;
+        if (py + panelH > PLAYFIELD_H) py = PLAYFIELD_H - panelH;
+
+        const bg = this.add.graphics().setDepth(950);
+        bg.fillStyle(0x1a1a2e, 0.92);
+        bg.fillRoundedRect(px, py, panelW, panelH, 8);
+        bg.lineStyle(1, 0xffd54f, 0.6);
+        bg.strokeRoundedRect(px, py, panelW, panelH, 8);
+        this.towerTooltip.push(bg);
+
+        const nameText = this.add.text(px + panelW / 2, py + 14, `${cfg.name}`, {
+            fontSize: '15px', color: '#ffd54f', fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(951);
+        this.towerTooltip.push(nameText);
+
+        const lines = [
+            `等級  Lv${tower.level}`,
+            `攻擊  ${tower.damage}`,
+            `速度  ${(tower.fireRate / 1000).toFixed(1)}s`,
+            `範圍  ${tower.range}`,
+        ];
+        lines.forEach((line, i) => {
+            const t = this.add.text(px + 12, py + 32 + i * 18, line, {
+                fontSize: '13px', color: '#cccccc',
+            }).setDepth(951);
+            this.towerTooltip.push(t);
+        });
+    }
+
+    clearMapTowerSelection() {
+        this.selectedMapTower = null;
+        if (this.towerHighlight) {
+            this.towerHighlight.destroy();
+            this.towerHighlight = null;
+        }
+        this.towerTooltip.forEach(el => el.destroy());
+        this.towerTooltip = [];
     }
 
     // ── 建塔 ──
@@ -922,6 +996,8 @@ class GameScene extends Phaser.Scene {
         this.showMessage(`升級到 Lv${tower.level}！`, 1000);
         this.updateUI();
         this.renderCards();
+        // 刷新懸浮框
+        if (this.selectedMapTower === tower) this.selectMapTower(tower);
     }
 
     // ── 波次 ──
