@@ -44,11 +44,18 @@ const TOWER_TYPES = {
         name: '砲塔', cost: 100, range: 130, damage: 40, fireRate: 1400,
         color: 0x616161, colorLight: 0x9e9e9e, colorDark: 0x424242,
         projColor: 0xff5722, projTrail: 0xffccbc,
+        aoeRadius: 60,
     },
     ice: {
         name: '冰塔', cost: 75, range: 150, damage: 8, fireRate: 900,
         color: 0x1565c0, colorLight: 0x42a5f5, colorDark: 0x0d47a1,
         projColor: 0x4fc3f7, projTrail: 0xb3e5fc,
+    },
+};
+
+const SPECIAL_CARDS = {
+    chopTree: {
+        name: '砍樹', cost: 30, color: 0x6d4c41, colorLight: 0x8d6e63,
     },
 };
 

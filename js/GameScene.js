@@ -331,7 +331,7 @@ class GameScene extends Phaser.Scene {
 
     showCardPick() {
         this.cardPickActive = true;
-        const allTypes = ['arrow', 'cannon', 'ice'];
+        const allTypes = ['arrow', 'cannon', 'ice', 'chopTree'];
         const shuffled = allTypes.sort(() => Math.random() - 0.5);
         const choices = [shuffled[0], shuffled[1]];
         const imgKeys = { arrow: 'tower_arrow_trimmed', cannon: 'tower_cannon_trimmed', ice: 'tower_ice_trimmed' };
@@ -355,7 +355,9 @@ class GameScene extends Phaser.Scene {
         const PICK_W = 120, PICK_H = 160;
 
         choices.forEach((type, i) => {
-            const cfg = TOWER_TYPES[type];
+            const isChopTree = (type === 'chopTree');
+            const cfg = isChopTree ? null : TOWER_TYPES[type];
+            const borderColor = isChopTree ? 0x8d6e63 : cfg.colorLight;
             const cx = centerX + (i === 0 ? -80 : 80);
             const cy = centerY + 10;
 
@@ -363,16 +365,32 @@ class GameScene extends Phaser.Scene {
             const cardBg = this.add.graphics().setDepth(1001);
             cardBg.fillStyle(0x2a2a4a, 0.95);
             cardBg.fillRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
-            cardBg.lineStyle(2, cfg.colorLight, 0.8);
+            cardBg.lineStyle(2, borderColor, 0.8);
             cardBg.strokeRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
 
-            // 塔圖像
-            const imgKey = imgKeys[type];
-            if (imgKey && this.textures.exists(imgKey)) {
-                const img = this.add.image(cx, cy, imgKey).setDepth(1002);
-                const s = (PICK_H - 24) / img.height;
-                img.setScale(s);
-                cardElements.push(img);
+            if (isChopTree) {
+                // 砍樹卡：顯示樹木圖像 + 斧頭文字
+                const treeKey = 'deco_tree_trimmed';
+                if (this.textures.exists(treeKey)) {
+                    const img = this.add.image(cx, cy - 10, treeKey).setDepth(1002);
+                    const s = (PICK_H - 50) / img.height;
+                    img.setScale(s);
+                    cardElements.push(img);
+                }
+                const axeLabel = this.add.text(cx, cy + PICK_H / 2 - 30, '🪓 砍樹', {
+                    fontSize: '16px', color: '#bcaaa4', fontStyle: 'bold',
+                    stroke: '#000000', strokeThickness: 2,
+                }).setOrigin(0.5).setDepth(1002);
+                cardElements.push(axeLabel);
+            } else {
+                // 塔圖像
+                const imgKey = imgKeys[type];
+                if (imgKey && this.textures.exists(imgKey)) {
+                    const img = this.add.image(cx, cy, imgKey).setDepth(1002);
+                    const s = (PICK_H - 24) / img.height;
+                    img.setScale(s);
+                    cardElements.push(img);
+                }
             }
 
             // 點擊區域
@@ -390,7 +408,7 @@ class GameScene extends Phaser.Scene {
                 cardBg.clear();
                 cardBg.fillStyle(0x2a2a4a, 0.95);
                 cardBg.fillRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
-                cardBg.lineStyle(2, cfg.colorLight, 0.8);
+                cardBg.lineStyle(2, borderColor, 0.8);
                 cardBg.strokeRoundedRect(cx - PICK_W / 2, cy - PICK_H / 2, PICK_W, PICK_H, 10);
             });
 
@@ -515,10 +533,10 @@ class GameScene extends Phaser.Scene {
                 return;
             }
             this.gold -= packCost;
-            const allTypes = ['arrow', 'cannon', 'ice'];
+            const allTypes = ['arrow', 'cannon', 'ice', 'chopTree'];
             const count = 1 + Math.floor(Math.random() * 5);
             for (let i = 0; i < count; i++) {
-                this.cards.push(allTypes[Math.floor(Math.random() * 3)]);
+                this.cards.push(allTypes[Math.floor(Math.random() * allTypes.length)]);
             }
             closeShop();
             this.showMessage(`抽到 ${count} 張卡片！`, 1500);
@@ -578,13 +596,14 @@ class GameScene extends Phaser.Scene {
             this.renderCards();
         };
 
-        const types = ['arrow', 'cannon', 'ice'];
+        const types = ['arrow', 'cannon', 'ice', 'chopTree'];
         const imgKeys = { arrow: 'tower_arrow_trimmed', cannon: 'tower_cannon_trimmed', ice: 'tower_ice_trimmed' };
-        const CARD_W = 120, CARD_H = 160;
+        const CARD_W = 110, CARD_H = 150;
 
         types.forEach((type, i) => {
-            const cfg = TOWER_TYPES[type];
-            const cx = centerX + (i - 1) * 140;
+            const isChopTree = (type === 'chopTree');
+            const cfg = isChopTree ? SPECIAL_CARDS.chopTree : TOWER_TYPES[type];
+            const cx = centerX + (i - 1.5) * 125;
             const cy = centerY + 20;
 
             const cardBg = this.add.graphics().setDepth(1001);
@@ -595,14 +614,31 @@ class GameScene extends Phaser.Scene {
             cardBg.strokeRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 10);
             buyElements.push(cardBg);
 
-            // 塔圖像
-            const imgKey = imgKeys[type];
-            if (imgKey && this.textures.exists(imgKey)) {
-                const img = this.add.image(cx, cy - 15, imgKey).setDepth(1002);
-                const s = (CARD_H - 60) / img.height;
-                img.setScale(s);
-                if (!canBuy) img.setAlpha(0.4);
-                buyElements.push(img);
+            if (isChopTree) {
+                // 砍樹卡圖像
+                const treeKey = 'deco_tree_trimmed';
+                if (this.textures.exists(treeKey)) {
+                    const img = this.add.image(cx, cy - 20, treeKey).setDepth(1002);
+                    const s = (CARD_H - 70) / img.height;
+                    img.setScale(s);
+                    if (!canBuy) img.setAlpha(0.4);
+                    buyElements.push(img);
+                }
+                const axeLabel = this.add.text(cx, cy + 20, '🪓 砍樹', {
+                    fontSize: '14px', color: canBuy ? '#bcaaa4' : '#666666', fontStyle: 'bold',
+                    stroke: '#000000', strokeThickness: 2,
+                }).setOrigin(0.5).setDepth(1002);
+                buyElements.push(axeLabel);
+            } else {
+                // 塔圖像
+                const imgKey = imgKeys[type];
+                if (imgKey && this.textures.exists(imgKey)) {
+                    const img = this.add.image(cx, cy - 15, imgKey).setDepth(1002);
+                    const s = (CARD_H - 60) / img.height;
+                    img.setScale(s);
+                    if (!canBuy) img.setAlpha(0.4);
+                    buyElements.push(img);
+                }
             }
 
             // 價格
@@ -678,7 +714,8 @@ class GameScene extends Phaser.Scene {
             this.selectedTowerType = null;
         } else {
             this.selectedCardIndex = index;
-            this.selectedTowerType = this.cards[index];
+            const type = this.cards[index];
+            this.selectedTowerType = (type === 'chopTree') ? null : type;
         }
         this.renderCards();
     }
@@ -698,7 +735,9 @@ class GameScene extends Phaser.Scene {
             const cx = startX + i * (CARD_W + GAP) + CARD_W / 2;
             const cy = cardY;
             const selected = (i === this.selectedCardIndex);
-            const cfg = TOWER_TYPES[type];
+            const isChopTree = (type === 'chopTree');
+            const cfg = isChopTree ? null : TOWER_TYPES[type];
+            const borderColor = isChopTree ? 0x8d6e63 : cfg.colorLight;
 
             // 卡片背景
             const bg = this.add.graphics().setDepth(200);
@@ -710,18 +749,33 @@ class GameScene extends Phaser.Scene {
             } else {
                 bg.fillStyle(0x2a2a4a, 0.9);
                 bg.fillRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 6);
-                bg.lineStyle(1, cfg.colorLight, 0.5);
+                bg.lineStyle(1, borderColor, 0.5);
                 bg.strokeRoundedRect(cx - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 6);
             }
             this.cardObjects.push(bg);
 
-            // 塔圖像
-            const imgKey = imgKeys[type];
-            if (imgKey && this.textures.exists(imgKey)) {
-                const img = this.add.image(cx, cy - 2, imgKey).setDepth(201);
-                const s = (CARD_H - 14) / img.height;
-                img.setScale(s);
-                this.cardObjects.push(img);
+            if (isChopTree) {
+                // 砍樹卡：小樹圖 + 斧頭
+                const treeKey = 'deco_tree_trimmed';
+                if (this.textures.exists(treeKey)) {
+                    const img = this.add.image(cx, cy - 4, treeKey).setDepth(201);
+                    const s = (CARD_H - 24) / img.height;
+                    img.setScale(s);
+                    this.cardObjects.push(img);
+                }
+                const axe = this.add.text(cx, cy + CARD_H / 2 - 10, '🪓', {
+                    fontSize: '12px',
+                }).setOrigin(0.5).setDepth(201);
+                this.cardObjects.push(axe);
+            } else {
+                // 塔圖像
+                const imgKey = imgKeys[type];
+                if (imgKey && this.textures.exists(imgKey)) {
+                    const img = this.add.image(cx, cy - 2, imgKey).setDepth(201);
+                    const s = (CARD_H - 14) / img.height;
+                    img.setScale(s);
+                    this.cardObjects.push(img);
+                }
             }
 
             // 點擊區域
@@ -786,6 +840,16 @@ class GameScene extends Phaser.Scene {
             // 點擊空地 → 取消選取
             this.clearMapTowerSelection();
 
+            // 砍樹卡：點擊樹木移除
+            if (this.selectedCardIndex >= 0 && this.cards[this.selectedCardIndex] === 'chopTree') {
+                if (this.grid[col][row] === 'tree') {
+                    this.chopTree(col, row);
+                } else {
+                    this.showMessage('請點擊樹木來砍伐！', 800);
+                }
+                return;
+            }
+
             if (!this.selectedTowerType) return;
             this.placeTower(col, row, this.selectedTowerType);
         });
@@ -796,6 +860,18 @@ class GameScene extends Phaser.Scene {
             if (!this.selectedTowerType || pointer.y >= PLAYFIELD_H) return;
             const { col, row } = screenToGrid(pointer.x, pointer.y);
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+
+            // 砍樹卡預覽：樹木上顯示紅色高亮
+            if (this.selectedCardIndex >= 0 && this.cards[this.selectedCardIndex] === 'chopTree') {
+                if (this.grid[col][row] === 'tree') {
+                    const center = gridCenterToScreen(col, row);
+                    this.previewGfx.fillStyle(0xff5722, 0.25);
+                    this.previewGfx.fillCircle(center.x, center.y, TILE_W * 0.5);
+                    this.previewGfx.lineStyle(2, 0xff5722, 0.6);
+                    this.previewGfx.strokeCircle(center.x, center.y, TILE_W * 0.5);
+                }
+                return;
+            }
 
             const valid = this.grid[col][row] === 'buildable';
             const cfg = TOWER_TYPES[this.selectedTowerType];
@@ -898,6 +974,41 @@ class GameScene extends Phaser.Scene {
     }
 
     // ── 建塔 ──
+
+    chopTree(col, row) {
+        if (this.selectedCardIndex < 0) return;
+        const key = `${col},${row}`;
+        const treeObj = this.treeGraphics[key];
+
+        // 消耗砍樹卡
+        this.cards.splice(this.selectedCardIndex, 1);
+        this.selectedCardIndex = -1;
+        this.selectedTowerType = null;
+
+        // 砍樹動畫：搖晃後縮小消失
+        if (treeObj) {
+            this.tweens.add({
+                targets: treeObj,
+                angle: { from: -10, to: 10 },
+                duration: 80,
+                yoyo: true,
+                repeat: 2,
+                onComplete: () => {
+                    this.tweens.add({
+                        targets: treeObj,
+                        scaleX: 0, scaleY: 0, alpha: 0,
+                        duration: 200,
+                        onComplete: () => treeObj.destroy(),
+                    });
+                },
+            });
+            delete this.treeGraphics[key];
+        }
+
+        this.grid[col][row] = 'buildable';
+        this.showMessage('砍掉了一棵樹！', 800);
+        this.renderCards();
+    }
 
     placeTower(col, row, type) {
         if (this.grid[col][row] !== 'buildable') {
@@ -1268,7 +1379,26 @@ class GameScene extends Phaser.Scene {
         const move = proj.speed * (delta / 1000);
 
         if (d <= move) {
-            this.damageEnemy(proj.target, proj.damage, proj.type);
+            const hitX = proj.target.x;
+            const hitY = proj.target.y;
+            const cfg = TOWER_TYPES[proj.type];
+
+            if (cfg.aoeRadius) {
+                // AOE: 對範圍內所有敵人造成傷害
+                const r2 = cfg.aoeRadius * cfg.aoeRadius;
+                for (const enemy of this.enemies) {
+                    if (!enemy.alive) continue;
+                    const ex = enemy.x - hitX;
+                    const ey = enemy.y - hitY;
+                    if (ex * ex + ey * ey <= r2) {
+                        this.damageEnemy(enemy, proj.damage, proj.type);
+                    }
+                }
+                this.showAoeExplosion(hitX, hitY, cfg.aoeRadius, cfg.projColor);
+            } else {
+                this.damageEnemy(proj.target, proj.damage, proj.type);
+            }
+
             proj.alive = false;
             proj.graphics.destroy();
         } else {
@@ -1278,6 +1408,26 @@ class GameScene extends Phaser.Scene {
         }
     }
 
+    showAoeExplosion(x, y, radius, color) {
+        const gfx = this.add.graphics().setDepth(500).setPosition(x, y);
+        // 外圈半透明擴散
+        gfx.fillStyle(color, 0.25);
+        gfx.fillCircle(0, 0, radius * 0.3);
+        // 內圈亮光
+        gfx.fillStyle(0xffffff, 0.4);
+        gfx.fillCircle(0, 0, radius * 0.15);
+
+        this.tweens.add({
+            targets: gfx,
+            scaleX: 2.5,
+            scaleY: 2.5,
+            alpha: 0,
+            duration: 300,
+            ease: 'Power2',
+            onComplete: () => gfx.destroy(),
+        });
+    }
+
     // ── 主迴圈 ──
 
     update(time, delta) {
@@ -1285,7 +1435,7 @@ class GameScene extends Phaser.Scene {
             this.spawnTimer -= delta;
             if (this.spawnTimer <= 0) {
                 this.spawnEnemy(this.spawnQueue.shift());
-                this.spawnTimer = Math.max(400, 1000 - this.waveNumber * 30);
+                this.spawnTimer = Math.max(250, 600 - this.waveNumber * 20);
             }
         }
 
